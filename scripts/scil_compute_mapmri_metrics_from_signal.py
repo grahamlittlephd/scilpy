@@ -21,6 +21,7 @@ from scilpy.io.utils import (add_force_b0_arg, add_overwrite_arg,
 from scilpy.reconst.raw_signal import compute_sh_coefficients
 from scilpy.reconst.multi_processes import fit_from_model
 
+
 def _build_arg_parser():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
@@ -49,7 +50,7 @@ def _build_arg_parser():
     p.add_argument('--positivity_constraint', type=bool, default=True,
                    help='Constrain the solution of the diffusion propogator to positive values '
                         '(True or False). [%(default)s]')
-    
+
     add_force_b0_arg(p)
     p.add_argument('--mask',
                    help='Path to a binary mask.\nOnly data inside the mask '
@@ -70,9 +71,9 @@ def main():
     dwi = vol.get_fdata(dtype=np.float32)
 
     bvals, bvecs = read_bvals_bvecs(args.in_bval, args.in_bvec)
-    gtab = gradient_table(args.in_bval, args.in_bvec, b0_threshold=bvals.min(), 
-                        big_delta=args.big_delta,
-                        small_delta=args.small_delta)
+    gtab = gradient_table(args.in_bval, args.in_bvec, b0_threshold=bvals.min(),
+                          big_delta=args.big_delta,
+                          small_delta=args.small_delta)
 
     mask = None
     if args.mask is None:
@@ -81,11 +82,11 @@ def main():
         mask_img = nib.load(args.mask)
         assert_same_resolution((vol, mask_img))
         mask = mask_img.get_fdata().astype(np.uint8)
-        mask = np.repeat(mask[:,:,:,np.newaxis], dwi.shape[3], axis=3)
+        mask = np.repeat(mask[:, :, :, np.newaxis], dwi.shape[3], axis=3)
         print(mask.shape)
         dwi *= mask
         mask = None
-        
+
         #mask = get_data_as_mask(mask_img, dtype='bool')
 
     # If laplacian regularization but no weighting given use GCV
@@ -100,10 +101,10 @@ def main():
                                       positivity_constraint=args.positivity_constraint)
     # Computing CSD fit
     mapfit = fit_from_model(mapmri_model, dwi,
-                             mask=mask, nbr_processes=6)
-    
-    nib.save(nib.Nifti1Image(mapfit.rtop().astype(np.float32), 
-            vol.affine), args.out_mapmri + '_rtop.nii.gz')
+                            mask=mask, nbr_processes=6)
+
+    nib.save(nib.Nifti1Image(mapfit.rtop().astype(np.float32),
+                             vol.affine), args.out_mapmri + '_rtop.nii.gz')
     nib.save(nib.Nifti1Image(mapfit.msd().astype(np.float32),
              vol.affine), args.out_mapmri + '_msd.nii.gz')
     nib.save(nib.Nifti1Image(mapfit.qiv().astype(np.float32),
@@ -112,6 +113,7 @@ def main():
              vol.affine), args.out_mapmri + '_rtap.nii.gz')
     nib.save(nib.Nifti1Image(mapfit.rtpp().astype(np.float32),
              vol.affine), args.out_mapmri + '_rtpp.nii.gz')
+
 
 if __name__ == "__main__":
     main()
