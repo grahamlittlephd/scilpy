@@ -115,3 +115,137 @@ class SeedGenerator(object):
         random_generator.random_sample(random_numbers_to_skip)
 
         return random_generator, indices
+
+
+# Added Explicit Seed generator for use with mesh based tracking
+class SeedGeneratorExplicit(object):
+    """
+    Class to get seeding positions.
+
+    Generated seeds from a list of positions. In voxel space (e.g origin = corner).
+    """
+    def __init__(self, seed_list, norm_list):
+        """
+        Parameters
+        ----------
+        seed_list: np.array
+            The data, ex, loaded from nibabel img.get_fdata().
+        voxres: np.array(3,)
+            The pixel resolution, ex, using img.header.get_zooms()[:3].
+        """
+        self.data = None # TODO do I need this?
+        self.voxres = None # TODO do I need this?
+
+        # Everything scilpy.tracking is in 'corner', 'voxmm'
+        self.origin = 'corner'
+        self.space = 'voxmm'
+
+        # self.seed are all explicit po.
+        self.seeds = seed_list
+        if len(self.seeds) == 0:
+            logging.warning("No seeds provided!")
+        
+        self.norms = norm_list
+        if len(self.norms) != len(self.seeds):
+             logging.warning("Seed and normals must be of the same length!")
+
+    def get_next_pos(self, random_generator, indices, which_seed):
+        """
+        Generate the next seed position (Space=voxmm, origin=corner).
+
+        Parameters
+        ----------
+        random_generator : numpy random generator
+            Initialized numpy number generator.
+        indices : List
+            Indices of current seeding map.
+        which_seed : int
+            Seed number to be processed.
+
+        Return
+        ------
+        seed_pos: tuple
+            Position of next seed expressed in mm.
+        """
+        len_seeds = len(self.seeds)
+        if len_seeds == 0:
+            return []
+
+        voxel_dim = np.asarray(self.voxres)
+
+        # seed selection from explicit coordinate list
+        ind = which_seed % len_seeds
+
+        return self.seeds[indices[ind]]
+
+    def get_next_pos_and_norm(self, random_generator, indices, which_seed):
+        """
+        Generate the next seed position (Space=voxmm, origin=corner).
+
+        Parameters
+        ----------
+        random_generator : numpy random generator
+            Initialized numpy number generator.
+        indices : List
+            Indices of current seeding map.
+        which_seed : int
+            Seed number to be processed.
+
+        Return
+        ------
+        seed_pos: tuple
+            Position of next seed expressed in mm.
+        """
+        len_seeds = len(self.seeds)
+        if len_seeds == 0:
+            return []
+
+        voxel_dim = np.asarray(self.voxres)
+
+        # seed selection from explicit coordinate list
+        ind = which_seed % len_seeds
+
+        return self.seeds[indices[ind]], self.norms[indices[ind]]
+
+    # Kept the init generator for now even though it is not used.
+    # Specifically so first seed functionality can be used
+    def init_generator(self, random_initial_value, first_seed_of_chunk):
+        """
+        Initialize numpy number generator according to user's parameter
+        and indexes from the seeding map.
+
+        Parameters
+        ----------
+        random_initial_value : int
+            The "seed" for the random generator.
+        first_seed_of_chunk : int
+            Number of seeds to skip (skip parameter + multi-processor skip).
+
+        Return
+        ------
+        random_generator : numpy random generator
+            Initialized numpy number generator.
+        indices : ndarray
+            Indices of current seeding map.
+        """
+        random_generator = np.random.RandomState(random_initial_value)
+
+        # 1. Initializing seeding maps indices (shuffling in-place)
+        indices = np.arange(len(self.seeds))
+        random_generator.shuffle(indices)
+
+        # 2. Initializing the random generator
+        # For reproducibility through multi-processing, skipping random numbers
+        # (by producing rand numbers without using them) until reaching this
+        # process (i.e this chunk)'s set of random numbers. Producing only
+        # 100000 at the time to prevent RAM overuse.
+        # (Multiplying by 3 for x,y,z)
+        random_numbers_to_skip = first_seed_of_chunk * 3
+        # toDo: see if 100000 is ok, and if we can create something not
+        #  hard-coded
+        while random_numbers_to_skip > 100000:
+            random_generator.random_sample(100000)
+            random_numbers_to_skip -= 100000
+        random_generator.random_sample(random_numbers_to_skip)
+
+        return random_generator, indices

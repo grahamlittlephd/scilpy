@@ -275,6 +275,7 @@ class Tracker(object):
         first_seed_of_chunk = chunk_id * chunk_size + self.skip
         random_generator, indices = self.seed_generator.init_generator(
             self.rng_seed, first_seed_of_chunk)
+        
         if chunk_id == self.nbr_processes - 1:
             chunk_size += self.nbr_seeds % self.nbr_processes
 
@@ -283,12 +284,18 @@ class Tracker(object):
             if s % self.printing_frequency == 0:
                 logging.info("Process {} (id {}): {} / {}"
                              .format(chunk_id, os.getpid(), s, chunk_size))
-
-            seed = self.seed_generator.get_next_pos(
-                random_generator, indices, first_seed_of_chunk + s)
+            norm = None
+            if self.seed_generator.norms:
+                seed, norm = self.seed_generator.get_next_pos_and_norm(
+                    random_generator, indices, first_seed_of_chunk + s)
+            else:
+                seed = self.seed_generator.get_next_pos(
+                    random_generator, indices, first_seed_of_chunk + s)
+            
+            
 
             # Forward and backward tracking
-            line = self._get_line_both_directions(seed)
+            line = self._get_line_both_directions(seed, normal=norm)
 
             if line is not None:
                 if self.compression_th and self.compression_th > 0:
@@ -302,7 +309,7 @@ class Tracker(object):
                     seeds.append(np.asarray(seed, dtype='float32'))
         return streamlines, seeds
 
-    def _get_line_both_directions(self, seeding_pos):
+    def _get_line_both_directions(self, seeding_pos, normal=None):
         """
         Generate a streamline from an initial position following the tracking
         parameters.
@@ -324,26 +331,33 @@ class Tracker(object):
         #  recreate a new one. This method is here for legacy reasons.
         np.random.seed(np.uint32(hash((seeding_pos, self.rng_seed))))
 
-        # Forward
         line = [np.asarray(seeding_pos)]
-        tracking_info = self.propagator.prepare_forward(seeding_pos)
-        if tracking_info == PropagationStatus.ERROR:
-            # No good tracking direction can be found at seeding position.
-            return None
-        line = self._propagate_line(line, tracking_info)
+        if not normal:
+            # Forward
+            tracking_info = self.propagator.prepare_forward(seeding_pos)
+            if tracking_info == PropagationStatus.ERROR:
+                # No good tracking direction can be found at seeding position.
+                return None
+            line = self._propagate_line(line, tracking_info)
 
-        # Backward
-        if not self.track_forward_only:
-            if len(line) > 1:
-                line.reverse()
+            # Backward
+            if not self.track_forward_only:
+                if len(line) > 1:
+                    line.reverse()
 
-            tracking_info = self.propagator.prepare_backward(line,
-                                                             tracking_info)
+                tracking_info = self.propagator.prepare_backward(line,
+                                                                tracking_info)                                       
+                line = self._propagate_line(line, tracking_info)
+        else:
+            # direction is given for initial tracking direction from seed
+            tracking_info = self.propagator.prepare_normal(normal)
+            #tracking_info = self.propagator.prepare_forward(seeding_pos) # Test to see what happens without normal
             line = self._propagate_line(line, tracking_info)
 
         # Clean streamline
         if self.min_nbr_pts <= len(line) <= self.max_nbr_pts:
             return line
+        
         return None
 
     def _propagate_line(self, line, tracking_info):

@@ -529,3 +529,132 @@ class ODFPropagator(PropagatorOnSphere):
             if 0 < sf[i] == np.max(sf[self.maxima_neighbours[i]]):
                 maxima.append(self.dirs[i])
         return maxima
+
+class ODFPropagatorMesh(ODFPropagator):
+    """
+    Propagator on ODFs/fODFs. Algo can be det or prob.
+    """
+    def __init__(self, dataset, step_size,
+                 rk_order, algo, basis, sf_threshold, sf_threshold_init,
+                 theta, dipy_sphere='symmetric724',
+                 min_separation_angle=np.pi / 16.,
+                 nbr_init_norm_steps=1):
+        """
+        Parameters
+        ----------
+        dataset: scilpy.image.datasets.DataVolume
+            Trackable Dataset object.
+        step_size: float
+            The step size for tracking.
+        rk_order: int
+            Order for the Runge Kutta integration.
+        theta: float
+            Maximum angle (radians) between two steps.
+        dipy_sphere: string, optional
+            If necessary, name of the DIPY sphere object to use to evaluate
+            directions.
+        basis: string
+            SH basis name. One of 'tournier07' or 'descoteaux07'
+        sf_threshold: float
+            Threshold on spherical function (SF).
+        sf_threshold_init: float
+            Threshold on spherical function when initializing a new streamline.
+        theta: float
+            Maximum angle (radians) between two steps.
+        dipy_sphere: string, optional
+            Name of the DIPY sphere object to use for evaluating SH. Can't be
+            None.
+        min_separation_angle: float, optional
+            Minimum separation angle (in radians) for peaks extraction. Used
+            for deterministic tracking. A candidate direction is a maximum if
+            its SF value is greater than all other SF values in its
+            neighbourhood, where the neighbourhood includes all the sphere
+            directions located at most `min_separation_angle` from the
+            candidate direction.
+        """
+    
+        # Initializing using ODFPropagator
+        super().__init__(dataset, step_size, rk_order, algo, basis, sf_threshold, sf_threshold_init,
+                 theta, dipy_sphere, min_separation_angle)
+
+        self.nbr_init_norm_steps=nbr_init_norm_steps
+        
+    def prepare_normal(self, norm_dir):
+        """
+        Prepare the normal direction for the propagation.
+
+        Parameters
+        ----------
+        norm_dir: ndarray (3,)
+            Normal direction.
+
+        Returns
+        -------
+        norm_dir: ndarray (3,)
+            Normal direction.
+        """
+        ind = self.sphere.find_closest(norm_dir)
+
+        return TrackingDirection(norm_dir / np.linalg.norm(norm_dir), ind)
+
+    def propagate(self, line, v_in):
+        """
+        Given the current position and direction, computes the next position
+        and direction using Runge-Kutta integration method. If no valid
+        tracking direction is available, v_in is chosen.
+
+        Parameters
+        ----------
+        line: list[ndarrray (3,)]
+            Current position.
+        v_in: ndarray (3,) or TrackingDirection
+            Previous tracking direction.
+
+        Return
+        ------
+        new_pos: ndarray (3,)
+            The new segment position.
+        new_dir: ndarray (3,) or TrackingDirection
+            The new segment direction.
+        is_direction_valid: bool
+            True if new_dir is valid.
+        """
+        # Finding last coordinate
+        pos = line[-1]
+
+        # If seeded with normal direction take a few steps in normal direction before tracking
+        if len(line) <= self.nbr_init_norm_steps+1:
+            is_direction_valid = True
+            new_dir = v_in
+        else:
+            if self.rk_order == 1:
+                is_direction_valid, new_dir = \
+                    self._sample_next_direction_or_go_straight(pos, v_in)
+
+            elif self.rk_order == 2:
+                is_direction_valid, dir1 = \
+                    self._sample_next_direction_or_go_straight(pos, v_in)
+                _, new_dir = self._sample_next_direction_or_go_straight(
+                    pos + 0.5 * self.step_size * np.array(dir1), dir1)
+
+            else:
+                # case self.rk_order == 4
+                is_direction_valid, dir1 = \
+                    self._sample_next_direction_or_go_straight(pos, v_in)
+                v1 = np.array(dir1)
+                _, dir2 = self._sample_next_direction_or_go_straight(
+                    pos + 0.5 * self.step_size * v1, dir1)
+                v2 = np.array(dir2)
+                _, dir3 = self._sample_next_direction_or_go_straight(
+                    pos + 0.5 * self.step_size * v2, dir2)
+                v3 = np.array(dir3)
+                _, dir4 = self._sample_next_direction_or_go_straight(
+                    pos + self.step_size * v3, dir3)
+                v4 = np.array(dir4)
+
+                new_v = (v1 + 2 * v2 + 2 * v3 + v4) / 6
+                new_dir = TrackingDirection(new_v, dir1.index)
+
+        new_pos = pos + self.step_size * np.array(new_dir)
+
+        return new_pos, new_dir, is_direction_valid
