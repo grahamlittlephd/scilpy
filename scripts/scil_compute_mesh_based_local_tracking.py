@@ -84,8 +84,6 @@ def _build_arg_parser():
                         'fODF.')
     p.add_argument('in_seed_list',
                    help='Text file containing explicit list of seed points ')
-    p.add_argument('in_norm_list',
-                   help='Text file containing explicit list of normals ')
     p.add_argument('in_mask',
                    help='Tracking mask (.nii.gz).\n'
                         'Tracking will stop outside this mask.')
@@ -134,6 +132,9 @@ def _build_arg_parser():
                           "with \n--skip 1,000,000.")
 
     mesh_g = p.add_argument_group('Mesh based tracking options')
+    mesh_g.add_argument('--in_norm_list',default=None,
+                        help='List of normals per vertex coordinate. If given'
+                        'initiate tracking in the direction of normal.')
     mesh_g.add_argument('--nbr_init_norm_steps', type=int,
                          default=1, dest='nbr_init_norm_steps',
                          help="Number of steps to take in the initial "
@@ -187,16 +188,19 @@ def main():
 
     logging.debug("Loading explicit seed points and normals")
     seeds = tuple(map(tuple, loadtxt(args.in_seed_list)))
-    normals = tuple(map(tuple, loadtxt(args.in_norm_list)))
-
     seed_list = seeds
-    normals_list = normals
     for i in range(0,args.nbr_sps-1):
         seed_list = seed_list + seeds
-        normals_list = normals_list + normals
-
     seeds = seed_list
-    normals = normals_list
+
+    if args.in_norm_list is not none:
+        normals = tuple(map(tuple, loadtxt(args.in_norm_list)))
+        normals_list = normals
+        for i in range(0,args.nbr_sps-1):
+            normals_list = normals_list + normals
+        normals = normals_list
+    else:
+        normals = None
 
     seed_generator = SeedGeneratorExplicit(seeds, normals)
 

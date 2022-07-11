@@ -124,7 +124,7 @@ class SeedGeneratorExplicit(object):
 
     Generated seeds from a list of positions. In voxel space (e.g origin = corner).
     """
-    def __init__(self, seed_list, norm_list):
+    def __init__(self, seed_list, norm_list=None):
         """
         Parameters
         ----------
@@ -144,10 +144,11 @@ class SeedGeneratorExplicit(object):
         self.seeds = seed_list
         if len(self.seeds) == 0:
             logging.warning("No seeds provided!")
-        
-        self.norms = norm_list
-        if len(self.norms) != len(self.seeds):
-             logging.warning("Seed and normals must be of the same length!")
+
+        self.norms = norm_list        
+        if norm_list is not None:
+            if len(self.norms) != len(self.seeds):
+                logging.warning("Seed and normals must be of the same length!")
 
     def get_next_pos(self, random_generator, indices, which_seed):
         """
@@ -205,7 +206,12 @@ class SeedGeneratorExplicit(object):
         # seed selection from explicit coordinate list
         ind = which_seed % len_seeds
 
-        return self.seeds[indices[ind]], self.norms[indices[ind]]
+        if self.norms:
+            thisNorm = self.norms[indices[ind]]
+        else:
+            thisNorm = None
+
+        return self.seeds[indices[ind]], thisNorm
 
     # Kept the init generator for now even though it is not used.
     # Specifically so first seed functionality can be used

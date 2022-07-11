@@ -622,8 +622,8 @@ class ODFPropagatorMesh(ODFPropagator):
         # Finding last coordinate
         pos = line[-1]
 
-        # If seeded with normal direction take a few steps in normal direction before tracking
-        if len(line) <= self.nbr_init_norm_steps+1:
+        # If seeded with normal direction take specified steps in normal direction before tracking
+        if len(line) <= self.nbr_init_norm_steps+1 :
             is_direction_valid = True
             new_dir = v_in
         else:
