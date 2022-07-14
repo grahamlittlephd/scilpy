@@ -193,7 +193,7 @@ def main():
         seed_list = seed_list + seeds
     seeds = seed_list
 
-    if args.in_norm_list is not none:
+    if args.in_norm_list is not None:
         normals = tuple(map(tuple, loadtxt(args.in_norm_list)))
         normals_list = normals
         for i in range(0,args.nbr_sps-1):
