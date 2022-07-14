@@ -285,11 +285,11 @@ class Tracker(object):
                 logging.info("Process {} (id {}): {} / {}"
                              .format(chunk_id, os.getpid(), s, chunk_size))
             norm = None
-            if self.seed_generator.norms:
-                seed, norm = self.seed_generator.get_next_pos_and_norm(
-                    random_generator, indices, first_seed_of_chunk + s)
-            else:
-                seed = self.seed_generator.get_next_pos(
+            # if self.seed_generator.norms:
+            #     seed, norm = self.seed_generator.get_next_pos_and_norm(
+            #         random_generator, indices, first_seed_of_chunk + s)
+            # else:
+            seed = self.seed_generator.get_next_pos(
                     random_generator, indices, first_seed_of_chunk + s)
             
             

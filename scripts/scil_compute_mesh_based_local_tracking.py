@@ -136,7 +136,7 @@ def _build_arg_parser():
                         help='List of normals per vertex coordinate. If given'
                         'initiate tracking in the direction of normal.')
     mesh_g.add_argument('--nbr_init_norm_steps', type=int,
-                         default=1, dest='nbr_init_norm_steps',
+                         default=0, dest='nbr_init_norm_steps',
                          help="Number of steps to take in the initial "
                               "direction. [%(default)s]")
     mesh_g.add_argument('--nbr_sps', type=int,
