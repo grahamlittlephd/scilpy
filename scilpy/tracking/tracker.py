@@ -285,7 +285,7 @@ class Tracker(object):
                 logging.info("Process {} (id {}): {} / {}"
                              .format(chunk_id, os.getpid(), s, chunk_size))
             norm = None
-            if self.seed_generator.norms:
+            if hasattr(self.seed_generator, 'norms'):
                 seed, norm = self.seed_generator.get_next_pos_and_norm(
                      random_generator, indices, first_seed_of_chunk + s)
             else:
@@ -351,7 +351,6 @@ class Tracker(object):
         else:
             # direction is given for initial tracking direction from seed
             tracking_info = self.propagator.prepare_normal(normal)
-            #tracking_info = self.propagator.prepare_forward(seeding_pos) # Test to see what happens without normal
             line = self._propagate_line(line, tracking_info)
 
         # Clean streamline
