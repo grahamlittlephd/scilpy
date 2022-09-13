@@ -60,21 +60,24 @@ def _build_arg_parser():
                    help='Text file containing one rule per line\n'
                    '(i.e. mesh_roi left_striatum.ply both_ends include).')
 
-
+    p.add_argument('--dist_thr', type=float, default=0.1,
+                    help='distance in mm, if mesh_roi used points within this threshold are considered in the mesh. [%(default)s]')
+    
     p.add_argument('--no_empty', action='store_true',
-                   help='Do not write file if there are no streamlines.')
+                    help='Do not write file if there is no streamline.')
+    
     p.add_argument('--display_counts', action='store_true',
-                   help='Print streamline count before and after filtering')
+                    help='Print streamline count before and after filtering')
+    
     p.add_argument('--save_rejected', metavar='FILENAME',
                    help='Save rejected streamlines to output tractogram.')
 
     add_reference_arg(p)
-    add_verbose_arg(p)
     add_overwrite_arg(p)
+    add_verbose_arg(p)
     add_json_args(p)
-
+    
     return p
-
 
 def prepare_filtering_list(parser, args):
     roi_opt_list = []
@@ -203,7 +206,7 @@ def streamlines_in_mesh(sft, target_mesh, all_in=False, dist_thr=0.1):
 
     return filter_list
 
-def filter_mesh_roi(sft, mesh, filter_type, is_exclude):
+def filter_mesh_roi(sft, mesh, filter_type, is_exclude, dist_thr=0.1):
     """
     Parameters
     ----------
@@ -227,11 +230,13 @@ def filter_mesh_roi(sft, mesh, filter_type, is_exclude):
     if filter_type in ['any', 'all']:
         # Point based filtering
         line_based_indices = streamlines_in_mesh(sft, mesh,
-                                                all_in=filter_type == 'all')
+                                                all_in=filter_type == 'all', 
+                                                dist_thr=dist_thr)
     else:
         # End point filtering
         line_based_indices = streamline_endpoints_in_mesh(sft, mesh,
-                                                both_ends = filter_type == 'both_ends')
+                                                both_ends = filter_type == 'both_ends', 
+                                                dist_thr=dist_thr)
 
     # If the 'exclude' option is used, the selection is inverted
     if is_exclude:
@@ -269,7 +274,6 @@ def main():
     sft = load_tractogram_with_reference(parser, args, args.in_tractogram)
     if args.save_rejected:
         initial_sft = deepcopy(sft)
-    bin_struct = ndimage.generate_binary_structure(3, 2)
 
     # Streamline count before filtering
     o_dict['streamline_count_before_filtering'] = len(sft.streamlines)
@@ -293,9 +297,14 @@ def main():
             mesh = o3d.io.read_triangle_mesh(filter_arg)
 
             filtered_sft, kept_ids = filter_mesh_roi(sft, mesh,
-                                                     filter_mode, is_exclude)
+                                                     filter_mode, is_exclude, args.dist_thr)
 
-        
+        if filter_type == 'mesh_intersection':
+            mesh = o3d.io.read_triangle_mesh(filter_arg)
+
+            #filtered_sft, kept_ids = filter_mesh_intersection(sft, mesh,
+                                                     #filter_mode, is_exclude, args.intersect_angle_min, args.intersect_angle_max)
+
         logging.debug('The filtering options {0} resulted in '
                       '{1} streamlines'.format(roi_opt, len(filtered_sft)))
 
