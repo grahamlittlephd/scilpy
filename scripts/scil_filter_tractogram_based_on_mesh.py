@@ -55,7 +55,11 @@ def _build_arg_parser():
 
     p.add_argument('--mesh_roi', nargs=3, action='append',
                    metavar=('ROI_NAME', 'MODE', 'CRITERIA'),
-                   help='Filename of a hand drawn ROI (.nii or .nii.gz).')
+                   help='Filename of 3D mesh in RAS mm.')
+
+    p.add_argument('--mesh_intersect', nargs=3, action='append',
+                   metavar=('ROI_NAME', 'MODE', 'CRITERIA'),
+                   help='Filename of 3D mesh in RAS mm.')
 
     p.add_argument('--filtering_list',
                    help='Text file containing one rule per line\n'
@@ -219,7 +223,7 @@ def streamlines_in_mesh(sft, target_mesh, all_in=False, dist_thr=0.1):
 
     return filter_list
 
-def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect_min_angle=0.0, intersect_max_angle=0.5, intersect_dist_thr=3.0):
+def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect_min_angle=0.0, intersect_max_angle=0.5, intersect_dist=3.0):
     """
     Parameters
     ----------
@@ -255,20 +259,36 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
     # use ray casting to find distance from each point in tractogram to mesh
     filter_list = []
     for i in range(0, len(sft.streamlines)):
-        # Get first and last endpoint of each streamline
-        query_points = [sft.streamlines[i][0], sft.streamlines[i][-1]]
+        # Determine if there is an interection at either end of the streamline
 
+        # Step size
+        step_size = np.linalg.norm(sft.streamline_length[i][0] - sft.streamline_length[i][1])  
+        nbr_of_steps = np.ceil(intersect_dist / step_size)
+
+        if len(sft.streamlines[i]) > nbr_of_steps*2:
+            first_pnts = sft.streamlines[i][0:nbr_of_steps]
+            last_pnts = sft.streamlines[i][-nbr_of_steps:]
+            query_points = np.concatenate((first_pnts, last_pnts))
+        else:
+            query_points = sft.streamlines[i]
+        
         # Cast rays and get distance (negative values if inside)
         signed_distance = np.array(scene.compute_signed_distance(query_points))
 
-        # Check if both endpoints are within mesh
-        if both_ends:
-            if signed_distance[0] < dist_thr and signed_distance[1] < dist_thr:
-                filter_list.append(i)
-        # Check if either endpoint is within mesh
-        else:
-            if signed_distance[0] < dist_thr or signed_distance[1] < dist_thr:
-                filter_list.append(i)
+        #Determine if there is an intersection (negative to positive flip)
+        intersection = np.where(np.diff(np.sign(signed_distance)))
+
+        print(signed_distance)
+        print(intersection)
+
+        # # Check if both endpoints are within mesh
+        # if both_ends:
+        #     if signed_distance[0] < dist_thr and signed_distance[1] < dist_thr:
+        #         filter_list.append(i)
+        # # Check if either endpoint is within mesh
+        # else:
+        #     if signed_distance[0] < dist_thr or signed_distance[1] < dist_thr:
+        #         filter_list.append(i)
 
     return filter_list
 
