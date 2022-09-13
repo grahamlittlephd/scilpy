@@ -63,6 +63,13 @@ def _build_arg_parser():
     p.add_argument('--dist_thr', type=float, default=0.1,
                     help='distance in mm, if mesh_roi used points within this threshold are considered in the mesh. [%(default)s]')
     
+    p.add_argument('--intersect_min_angle', type=float, default=0.0,
+                    help='minimum angle in radians, if intersect_roi used remove streamlines that\n'
+                    'intersect the mesh at an anlge smaller than this value. [%(default)s]')
+    p.add_argument('--intersect_max_angle', type=float, default=0.5,
+                    help='maximum angle in radians, if intersect_roi used remove streamlines that\n'
+                    'intersect the mesh at an angle larger than this value. [%(default)s]')
+
     p.add_argument('--no_empty', action='store_true',
                     help='Do not write file if there is no streamline.')
     
@@ -303,7 +310,7 @@ def main():
             mesh = o3d.io.read_triangle_mesh(filter_arg)
 
             #filtered_sft, kept_ids = filter_mesh_intersection(sft, mesh,
-                                                     #filter_mode, is_exclude, args.intersect_angle_min, args.intersect_angle_max)
+            #filter_mode, is_exclude, args.intersect_min_angle, args.intersect_max_angle)
 
         logging.debug('The filtering options {0} resulted in '
                       '{1} streamlines'.format(roi_opt, len(filtered_sft)))
