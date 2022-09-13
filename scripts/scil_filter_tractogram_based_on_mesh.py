@@ -39,7 +39,9 @@ from scilpy.io.utils import (add_json_args,
                              read_info_from_mb_bdo)
 from scilpy.segment.streamlines import (filter_cuboid, filter_ellipsoid,
                                         filter_grid_roi)
+from dipy.io.stateful_tractogram import StatefulTractogram
 
+import open3d as o3d
 
 def _build_arg_parser():
     p = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
@@ -80,8 +82,8 @@ def prepare_filtering_list(parser, args):
 
     if args.mesh_roi:
         only_filtering_list = False
-        for roi_opt in args.drawn_roi:
-            roi_opt_list.append(['drawn_roi'] + roi_opt)
+        for roi_opt in args.mesh_roi:
+            roi_opt_list.append(['mesh_roi'] + roi_opt)
 
     if args.filtering_list:
         with open(args.filtering_list) as txt:
@@ -103,14 +105,112 @@ def prepare_filtering_list(parser, args):
 
     return roi_opt_list, only_filtering_list
 
+def streamline_endpoints_in_mesh(sft, target_mesh, both_ends=False, dist_thr=0.1):
+    """
+    Parameters
+    ----------
+    sft : StatefulTractogram
+        StatefulTractogram containing the streamlines to segment.
+    target_mesh : o3d.geometry.TriangleMesh
+        Mesh oriented RAS mm in which.
+    both_ends : bool
+        If True, both end points must be within mesh.
+    dist_thr : float
+        Distance threshold in mm to consider a point in the mesh.
+    Returns
+    -------
+    ids : list
+        Ids of the streamlines that pass filter (any or all).
+    """
+    # tractogram should be in RASmm same with mesh
+    sft.to_rasmm()
+    sft.to_corner()
+
+    # Legacy mesh needed for ray casting
+    legacy_mesh = o3d.t.geometry.TriangleMesh.from_legacy(target_mesh)
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(legacy_mesh)
+
+    # TODO definitely a faster way to do this, the casting is fast but the for loop sucks
+    # probably do a reshape get all signed distances and then reshape back
+    
+    # use ray casting to find distance from each point in tractogram to mesh
+    filter_list = []
+    for i in range(0,len(sft.streamlines)):
+        # Get first and last endpoint of each streamline
+        query_points = [sft.streamlines[i][0], sft.streamlines[i][-1]]
+
+        # Cast rays and get distance (negative values if inside)
+        signed_distance = np.array(scene.compute_signed_distance(query_points))
+        
+        # Check if both endpoints are within mesh
+        if both_ends:
+            if signed_distance[0] < dist_thr and signed_distance[1] < dist_thr:
+                filter_list.append(i)
+        # Check if either endpoint is within mesh
+        else:
+            if signed_distance[0] < dist_thr or signed_distance[1] < dist_thr:
+                filter_list.append(i)
+
+    return filter_list
+
+
+def streamlines_in_mesh(sft, target_mesh, all_in=False, dist_thr=0.1):
+    """
+    Parameters
+    ----------
+    sft : StatefulTractogram
+        StatefulTractogram containing the streamlines to segment.
+    target_mesh : o3d.geometry.TriangleMesh
+        Mesh oriented RAS mm in which the streamlines should pass.
+    all_in : bool
+        If True, all points of the streamline must be in the mesh.
+    dist_thr : float
+        Distance threshold in mm to consider a point in the mesh.
+    Returns
+    -------
+    ids : list
+        Ids of the streamlines that pass filter (any or all).
+    """
+    # tractogram should be in RASmm same with mesh
+    sft.to_rasmm()
+    sft.to_corner()
+
+    # Legacy mesh needed for ray casting
+    legacy_mesh = o3d.t.geometry.TriangleMesh.from_legacy(target_mesh)
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(legacy_mesh)
+
+    # TODO definitely a faster way to do this, the casting is fast but the for loop sucks
+    # probably do a reshape get all signed distances and then reshape back
+    
+    # use ray casting to find distance from each point in tractogram to mesh
+    filter_list = []
+    for i in range(0,len(sft.streamlines)):
+        query_points = sft.streamlines[i]
+
+        # Cast rays and get distance (negative values if inside) 
+        signed_distance = np.array(scene.compute_signed_distance(query_points))
+        
+        # decide if this streamline should be filtered
+        if all_in:
+            if np.all(signed_distance < dist_thr):
+                filter_list.append(i)
+                print(signed_distance)
+        else:
+            if np.any(signed_distance < dist_thr):
+                filter_list.append(i)
+
+    return filter_list
+
 def filter_mesh_roi(sft, mesh, filter_type, is_exclude):
     """
     Parameters
     ----------
     sft : StatefulTractogram
         StatefulTractogram containing the streamlines to segment.
-    mask : numpy.ndarray
-        Binary mask in which the streamlines should pass.
+    mesh : o3d.geometry.TriangleMesh
+        Mesh oriented RAS mm.
     filter_type: str
         One of the 3 following choices, 'any', 'all', 'either_end', 'both_ends'.
     is_exclude: bool
@@ -122,39 +222,22 @@ def filter_mesh_roi(sft, mesh, filter_type, is_exclude):
     ids: list
         Ids of the streamlines passing through the mask.
     """
+    
     line_based_indices = []
     if filter_type in ['any', 'all']:
-        line_based_indices = streamlines_in_mask(sft, mask,
-                                                 all_in=filter_type == 'all')
+        # Point based filtering
+        line_based_indices = streamlines_in_mesh(sft, mesh,
+                                                all_in=filter_type == 'all')
     else:
-        sft.to_vox()
-        sft.to_corner()
-        streamline_vox = sft.streamlines
-        # For endpoint filtering, we need to keep 2 separately
-        # Could be faster for either end, but the code look cleaner like this
-        line_based_indices_1 = []
-        line_based_indices_2 = []
-        for i, line_vox in enumerate(streamline_vox):
-            voxel_1 = line_vox[0].astype(np.int16)[:, None]
-            voxel_2 = line_vox[-1].astype(np.int16)[:, None]
-            if map_coordinates(mask, voxel_1, order=0, mode='nearest'):
-                line_based_indices_1.append(i)
-            if map_coordinates(mask, voxel_2, order=0, mode='nearest'):
-                line_based_indices_2.append(i)
-
-        # Both endpoints need to be in the mask (AND)
-        if filter_type == 'both_ends':
-            line_based_indices = np.intersect1d(line_based_indices_1,
-                                                line_based_indices_2)
-        # Only one endpoint need to be in the mask (OR)
-        elif filter_type == 'either_end':
-            line_based_indices = np.union1d(line_based_indices_1,
-                                            line_based_indices_2)
+        # End point filtering
+        line_based_indices = streamline_endpoints_in_mesh(sft, mesh,
+                                                both_ends = filter_type == 'both_ends')
 
     # If the 'exclude' option is used, the selection is inverted
     if is_exclude:
         line_based_indices = np.setdiff1d(range(len(sft)),
                                           np.unique(line_based_indices))
+    
     line_based_indices = np.asarray(line_based_indices, dtype=np.int32)
 
     # From indices to sft
@@ -207,11 +290,9 @@ def main():
 
         # Read in mesh and filter
         if filter_type == 'mesh_roi':
-            
-            img = nib.load(filter_arg)
-            mask = get_data_as_mask(img)
+            mesh = o3d.io.read_triangle_mesh(filter_arg)
 
-            filtered_sft, kept_ids = filter_mesh_roi(sft, mask,
+            filtered_sft, kept_ids = filter_mesh_roi(sft, mesh,
                                                      filter_mode, is_exclude)
 
         
