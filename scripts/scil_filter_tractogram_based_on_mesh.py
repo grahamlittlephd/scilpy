@@ -68,10 +68,10 @@ def _build_arg_parser():
     p.add_argument('--dist_thr', type=float, default=0.1,
                    help='distance in mm, if mesh_roi used points within this threshold are considered in the mesh. [%(default)s]')
 
-    p.add_argument('--intersect_min_angle', type=float, default=0.0,
+    p.add_argument('--intersect_min_angle', type=float, default=0.5,
                    help='minimum angle in radians, if intersect_roi used remove streamlines that\n'
                    'intersect the mesh at an anlge smaller than this value. [%(default)s]')
-    p.add_argument('--intersect_max_angle', type=float, default=0.5,
+    p.add_argument('--intersect_max_angle', type=float, default=1.0,
                    help='maximum angle in radians, if intersect_roi used remove streamlines that\n'
                    'intersect the mesh at an angle larger than this value. [%(default)s]')
     p.add_argument('--intersect_dist', type=float, default=3.0,
@@ -102,6 +102,11 @@ def prepare_filtering_list(parser, args):
         only_filtering_list = False
         for roi_opt in args.mesh_roi:
             roi_opt_list.append(['mesh_roi'] + roi_opt)
+
+    if args.mesh_intersect:
+        only_filtering_list = False
+        for roi_opt in args.mesh_intersect:
+            roi_opt_list.append(['mesh_intersect'] + roi_opt)
 
     if args.filtering_list:
         with open(args.filtering_list) as txt:
@@ -216,7 +221,6 @@ def streamlines_in_mesh(sft, target_mesh, all_in=False, dist_thr=0.1):
         if all_in:
             if np.all(signed_distance < dist_thr):
                 filter_list.append(i)
-                print(signed_distance)
         else:
             if np.any(signed_distance < dist_thr):
                 filter_list.append(i)
@@ -254,7 +258,7 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
     scene.add_triangles(legacy_mesh)
 
     # TODO definitely a faster way to do this, the casting is fast but the for loop sucks
-    # probably do a reshape get all signed distances and then reshape back
+    # maybe do a reshape get all signed distances and then reshape back
 
     # use ray casting to find distance from each point in tractogram to mesh
     filter_list = []
@@ -262,9 +266,9 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
         # Determine if there is an interection at either end of the streamline
 
         # Step size
-        step_size = np.linalg.norm(sft.streamline_length[i][0] - sft.streamline_length[i][1])  
-        nbr_of_steps = np.ceil(intersect_dist / step_size)
-
+        step_size = np.linalg.norm(sft.streamlines[i][0] - sft.streamlines[i][1])  
+        nbr_of_steps = np.int(np.ceil(intersect_dist / step_size))
+        
         if len(sft.streamlines[i]) > nbr_of_steps*2:
             first_pnts = sft.streamlines[i][0:nbr_of_steps]
             last_pnts = sft.streamlines[i][-nbr_of_steps:]
@@ -273,22 +277,54 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
             query_points = sft.streamlines[i]
         
         # Cast rays and get distance (negative values if inside)
-        signed_distance = np.array(scene.compute_signed_distance(query_points))
+        signed_distance = np.sign(np.array(scene.compute_signed_distance(query_points)))
 
         #Determine if there is an intersection (negative to positive flip)
-        intersection = np.where(np.diff(np.sign(signed_distance)))
+        intersection = np.diff(signed_distance) != 0
 
-        print(signed_distance)
-        print(intersection)
+        # Set middle index False incase intersection detected because firstpnt and lastpnt concatenation (above)
+        if len(sft.streamlines[i]) > nbr_of_steps*2:
+            intersection[nbr_of_steps-1] = False
+        
+        # check intersection points to see if angle is within range
+        intersect_ind = np.where(intersection)[0]
+        intersect_start = query_points[intersect_ind]
+        intersect_end = query_points[intersect_ind+1]
 
-        # # Check if both endpoints are within mesh
-        # if both_ends:
-        #     if signed_distance[0] < dist_thr and signed_distance[1] < dist_thr:
-        #         filter_list.append(i)
-        # # Check if either endpoint is within mesh
-        # else:
-        #     if signed_distance[0] < dist_thr or signed_distance[1] < dist_thr:
-        #         filter_list.append(i)
+        # If both_ends then check to make sure at least two intersections exists (one is at the end one at the beginning)
+        if both_ends:
+            if len(intersect_ind) < 2:
+                continue
+            if not (np.any(intersect_ind < nbr_of_steps) and np.any(intersect_ind >= nbr_of_steps)):
+                continue
+
+        # For each intersection throw a ray from the start_pnt to the mesh and get angle
+        angles = []
+        for start_pnt, end_pnt in zip(intersect_start, intersect_end):
+            # Get vector from start_pnt to end_pnt
+            vector = end_pnt - start_pnt
+            vector = vector / np.linalg.norm(vector) # normalize to unit vector
+
+            # Get normal at intersection point by casting a ray in both directions
+            thisRay_pos = o3d.core.concatenate((start_pnt,vector),0).reshape((1,6))
+            thisRay_neg = o3d.core.concatenate((start_pnt,-vector),0).reshape((1,6))
+            thisRay = o3d.core.concatenate((thisRay_pos,thisRay_neg),0)
+            ans = scene.cast_rays(thisRay)
+            mesh_normal = np.squeeze(ans['primitive_normals'].numpy()[np.where(ans['t_hit'].numpy() == np.min(ans['t_hit'].numpy()))[0][0]])
+            
+            # Get angle between vector and normal (dot product) vectors should already be normalized
+            angles.append(np.abs(np.dot(vector, mesh_normal)))
+            
+        angles = np.array(angles)
+        if both_ends:
+            start_angles = angles[intersect_ind < nbr_of_steps]
+            end_angles = angles[intersect_ind >= nbr_of_steps]
+            if (np.any(np.logical_and(start_angles > intersect_min_angle, start_angles < intersect_max_angle)) and
+                      np.any(np.logical_and(end_angles > intersect_min_angle, end_angles < intersect_max_angle))):
+                filter_list.append(i)
+        else:
+            if np.any(np.logical_and(angles > intersect_min_angle, angles < intersect_max_angle)):
+                filter_list.append(i)
 
     return filter_list
 
@@ -448,7 +484,6 @@ def main():
                     "Only 'either_end' or 'both_ends' are valid for mesh_intersect")
 
             mesh = o3d.io.read_triangle_mesh(filter_arg)
-
             filtered_sft, kept_ids = filter_mesh_intersect(sft, mesh,
                                                            filter_mode, is_exclude, 
                                                            args.intersect_min_angle, 
