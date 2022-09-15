@@ -70,6 +70,7 @@ from scilpy.tracking.utils import (add_mandatory_options_tracking,
                                    verify_streamline_length_options,
                                    verify_seed_options)
 
+import open3d as o3d
 
 def _build_arg_parser():
     p = argparse.ArgumentParser(
@@ -143,6 +144,13 @@ def _build_arg_parser():
                          default=1, dest='nbr_sps',
                          help="Number of streamlines per seed [%(default)s]")
 
+    mesh_g = p.add_argument_group('Mesh based repulsion options')
+    mesh_g.add_argument('--repulsion_mesh', default=None,
+                        help='Mesh in LPS used for repulstion of streamlines.')
+    mesh_g.add_argument('--repulsion_radius', type=float, default=0.0,
+                        help='Only vertices within this radius will be used'
+                        'for repulsion force calculations [%(default)s]')
+
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
 
@@ -180,12 +188,6 @@ def main():
     # Only track in the direction specified by the input norms
     forward_only = True
 
-    #logging.debug("Loading seeding mask.")
-    #seed_img = nib.load(args.in_seed)
-    #seed_data = seed_img.get_fdata(caching='unchanged', dtype=float)
-    #seed_res = seed_img.header.get_zooms()[:3]
-    #seed_generator = SeedGenerator(seed_data, seed_res)
-
     logging.debug("Loading explicit seed points and normals")
     seeds = tuple(map(tuple, loadtxt(args.in_seed_list)))
     seed_list = seeds
@@ -220,10 +222,29 @@ def main():
     odf_sh_res = odf_sh_img.header.get_zooms()[:3]
     dataset = DataVolume(odf_sh_data, odf_sh_res, args.sh_interp)
 
+    logging.debug("Loading repulsion mesh.")
+    if args.repulsion_mesh is not None:
+        repulsion_mesh = o3d.io.read_triangle_mesh(args.repulsion_mesh)
+        repulsion_scene = o3d.t.geometry.RaycastingScene()
+        repulsion_scene.add_triangles(repulsion_mesh)
+
+        repulsion_mesh.compute_vertex_normals()
+        repulsion_vertices = repulsion_mesh.vertices
+        repulsion_normals = repulsion_mesh.vertex_normals 
+    else:
+        repulsion_scene = None
+        repulsion_vertices = None
+        repulsion_normals = None
+    
     logging.debug("Instantiating propagator.")
     propagator = ODFPropagatorMesh(
         dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
-        args.sf_threshold, args.sf_threshold_init, theta, args.sphere, nbr_init_norm_steps=args.nbr_init_norm_steps)
+        args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
+        nbr_init_norm_steps=args.nbr_init_norm_steps,
+        repulsion_scene=repulsion_scene, 
+        repulsion_vertices=repulsion_vertices,
+        repulsion_normals=repulsion_normals,
+        repulsion_radius=args.repulsion_radius)
 
     logging.debug("Instantiating tracker.")
     tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,

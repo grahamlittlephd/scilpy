@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from enum import Enum
+from http.client import MOVED_PERMANENTLY
 import logging
 
 import dipy
@@ -27,6 +28,7 @@ class AbstractPropagator(object):
     Propagation depends on the type of data (ex, DTI, fODF) and the way to get
     a direction from it (ex, det, prob).
     """
+
     def __init__(self, dataset, step_size, rk_order):
         """
         Parameters
@@ -306,6 +308,7 @@ class ODFPropagator(PropagatorOnSphere):
     """
     Propagator on ODFs/fODFs. Algo can be det or prob.
     """
+
     def __init__(self, dataset, step_size,
                  rk_order, algo, basis, sf_threshold, sf_threshold_init,
                  theta, dipy_sphere='symmetric724',
@@ -525,20 +528,26 @@ class ODFPropagator(PropagatorOnSphere):
         sf[sf < self.sf_threshold] = 0
         maxima = []
         for i in np.nonzero(self.tracking_neighbours[
-                                previous_direction.index])[0]:
+                previous_direction.index])[0]:
             if 0 < sf[i] == np.max(sf[self.maxima_neighbours[i]]):
                 maxima.append(self.dirs[i])
         return maxima
+
 
 class ODFPropagatorMesh(ODFPropagator):
     """
     Propagator on ODFs/fODFs. Algo can be det or prob.
     """
+
     def __init__(self, dataset, step_size,
                  rk_order, algo, basis, sf_threshold, sf_threshold_init,
                  theta, dipy_sphere='symmetric724',
                  min_separation_angle=np.pi / 16.,
-                 nbr_init_norm_steps=1):
+                 nbr_init_norm_steps=1,
+                 repulsion_scene=None,
+                 repulsion_vertices=None,
+                 repulsion_normals=None,
+                 repulsion_radius=0):
         """
         Parameters
         ----------
@@ -571,14 +580,32 @@ class ODFPropagatorMesh(ODFPropagator):
             neighbourhood, where the neighbourhood includes all the sphere
             directions located at most `min_separation_angle` from the
             candidate direction.
+
+        nbr_init_norm_steps: int, optional
+            Number of steps to use seed normal rather than selecting from the fODF.
+
+        repulsion_scene: o3d.scene, optional
+            scene containing the meshes that will be used to repulse the streamlines
+        repulstion_vertices: list of numpy arrays, optional
+            vertices of the meshes that will be used to repulse the streamlines
+        repulstion_normals: list of numpy arrays, optional
+            normals of calculated from each vertex used to repulse streamlines
+        repulsion_radius: float, optional
+            only vertices within this radius will be used to repulse streamlines
         """
-    
+
         # Initializing using ODFPropagator
         super().__init__(dataset, step_size, rk_order, algo, basis, sf_threshold, sf_threshold_init,
-                 theta, dipy_sphere, min_separation_angle)
+                         theta, dipy_sphere, min_separation_angle)
 
-        self.nbr_init_norm_steps=nbr_init_norm_steps
-        
+        self.nbr_init_norm_steps = nbr_init_norm_steps
+
+        # Repulsion options
+        self.repulsion_scene = repulsion_scene
+        self.repulsion_vertices = repulsion_vertices
+        self.repulsion_normals = repulsion_normals
+        self.repulsion_radius = repulsion_radius
+
     def prepare_normal(self, norm_dir):
         """
         Prepare the normal direction for the propagation.
@@ -655,6 +682,55 @@ class ODFPropagatorMesh(ODFPropagator):
                 new_v = (v1 + 2 * v2 + 2 * v3 + v4) / 6
                 new_dir = TrackingDirection(new_v, dir1.index)
 
-        new_pos = pos + self.step_size * np.array(new_dir)
+        # Given current position calculate mesh based forces
+        if self.mesh_scene is not None:
+            repulsion = self._get_repulsion_force(pos)
+        else:
+            repulsion = np.zeros(3)
 
-        return new_pos, new_dir, is_direction_valid
+        new_pos = pos + self.step_size * np.array(new_dir) + repulsion
+
+        return new_pos, new_dir, is_direction_valid\
+
+
+    def _get_repulsion_force(self, pos):
+        """
+        Calculate repulsion force at position pos
+
+        Parameters
+        ----------
+        pos: ndarray (3,)
+            Current position.
+
+        Return
+        ------
+        repulsion: ndarray (3,)
+            Repulsion force at position pos.
+        """
+
+        # Check to see if mesh is within radiaus of pos
+        if self.radius < self.repulsion_scene.compute_distance(pos):
+            repulsion = np.zeros((3,))
+        else:
+            # Find Points within radius of pos.
+            distance = np.linalg.norm(self.repulsion_vertices - pos, axis=1)
+
+            normals_within_range = self.repulsion_normals[np.where(
+                distance < self.radius)]
+            distance_within_range = distance[np.where(distance < self.radius)]
+
+            # TODO!!!! Get rid of this loop, this is going to be slow
+            # Sum up repulsion forces calculated for each vertex within range
+            moment = 0
+            for thisNorm, thisDist in zip(normals_within_range, distance_within_range):
+                # Calculate repulsion force
+                d = thisDist - self.radius
+                thisRepulsion = thisNorm*(d*d*d)/(self.radius*self.radius)
+                moment += thisRepulsion
+
+            if len(normals_within_range) > 0:
+                repulsion = moment/len(normals_within_range)
+            else:
+                repulsion = np.zeros((3,))
+
+        return repulsion
