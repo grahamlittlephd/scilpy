@@ -49,6 +49,8 @@ import time
 import dipy.core.geometry as gm
 import nibabel as nib
 
+import numpy as np
+
 from numpy import loadtxt
 from dipy.io.stateful_tractogram import StatefulTractogram, Space, \
                                         set_sft_logger_level
@@ -70,7 +72,24 @@ from scilpy.tracking.utils import (add_mandatory_options_tracking,
                                    verify_streamline_length_options,
                                    verify_seed_options)
 
+import numpy as np
+from numpy import asarray
+from nibabel.affines import apply_affine
+
 import open3d as o3d
+
+# From trimeshpy mesh transformations (need to do this somewhere else)
+def vtk_to_vox(vts, nibabel_img):
+    inv_affine = np.linalg.inv(nibabel_img.get_affine())
+    flip = np.diag([-1, -1, 1, 1])
+    vts = apply_affine(np.dot(inv_affine, flip), vts)
+    return vts
+
+def vtk_to_voxmm(vts, nibabel_img):
+    scale = np.array(nibabel_img.get_header().get_zooms())
+    return vtk_to_vox(vts, nibabel_img) * scale
+
+
 
 def _build_arg_parser():
     p = argparse.ArgumentParser(
@@ -225,12 +244,17 @@ def main():
     logging.debug("Loading repulsion mesh.")
     if args.repulsion_mesh is not None:
         repulsion_mesh = o3d.io.read_triangle_mesh(args.repulsion_mesh)
+        
+        # scilpy tracking works in vtk_voxel space.  Use the mask to do coversion
+        coords = vtk_to_voxmm(repulsion_mesh.vertices, nib.load(args.in_mask))
+        repulsion_mesh.vertices = o3d.utility.Vector3dVector(coords)
+        
         repulsion_scene = o3d.t.geometry.RaycastingScene()
-        repulsion_scene.add_triangles(repulsion_mesh)
+        repulsion_scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(repulsion_mesh))
 
         repulsion_mesh.compute_vertex_normals()
-        repulsion_vertices = repulsion_mesh.vertices
-        repulsion_normals = repulsion_mesh.vertex_normals 
+        repulsion_vertices = asarray(repulsion_mesh.vertices)
+        repulsion_normals = asarray(repulsion_mesh.vertex_normals) 
     else:
         repulsion_scene = None
         repulsion_vertices = None
