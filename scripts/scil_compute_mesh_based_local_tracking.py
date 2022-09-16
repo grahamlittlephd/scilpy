@@ -110,13 +110,13 @@ def generate_repulsion_force_map(vertices, normals, repulsion_radius, grid_resol
         Repulsion force map calculated in a bounding box around the vertices
     """
 
-    
-    min_x = np.min(vertices[:,0])
-    max_x = np.max(vertices[:,0])
-    min_y = np.min(vertices[:,1])
-    max_y = np.max(vertices[:,1])
-    min_z = np.min(vertices[:,2])
-    max_z = np.max(vertices[:,2])
+    # Creat bouding box around where the repulsion force is calculated
+    min_x = np.min(vertices[:,0] - repulsion_radius)
+    max_x = np.max(vertices[:,0] + repulsion_radius)
+    min_y = np.min(vertices[:,1] - repulsion_radius)
+    max_y = np.max(vertices[:,1] + repulsion_radius)
+    min_z = np.min(vertices[:,2] - repulsion_radius)
+    max_z = np.max(vertices[:,2] + repulsion_radius)
 
     mesh_grid
     # Check to see if mesh is within radiaus of pos
@@ -226,16 +226,11 @@ def _build_arg_parser():
                          default=1, dest='nbr_sps',
                          help="Number of streamlines per seed [%(default)s]")
 
-    mesh_g = p.add_argument_group('Mesh based repulsion options')
-    mesh_g.add_argument('--repulsion_vertices', default=None,
-                        help='Vertices in LPS voxmm used for generating repulsion force for streamlines.')
-    mesh_g.add_argument('--repulsion_normals', default=None,
-                        help='Normals for each vertex in the repulsion mesh.')
-    mesh_g.add_argument('--repulsion_radius', type=float, default=2.0,
-                        help='Only vertices within this radius will be used'
-                        'for repulsion force calculations [%(default)s]')
-    mesh_g.add_argument('--repulsion_grid_resolution', type=float, default=1.0,
-                        help='Resolution of the repulsion grid [%(default)s]')
+    mesh_g = p.add_argument_group('Mesh based attachtion/repulsion options')
+    mesh_g.add_argument('--repulsion_force_map', default=None,
+                        help='Force map to use for repulstion.')
+    mesh_g.add_argument('--attraction_force_map', default=None,
+                        help='Force map used for attraction')
 
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
