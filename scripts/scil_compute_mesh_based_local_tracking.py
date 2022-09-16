@@ -89,6 +89,54 @@ def vtk_to_voxmm(vts, nibabel_img):
     scale = np.array(nibabel_img.get_header().get_zooms())
     return vtk_to_vox(vts, nibabel_img) * scale
 
+def generate_repulsion_force_map(self, pos):
+    """
+    Calculate repulsion force at position pos
+
+    Parameters
+    ----------
+    pos: ndarray (3,)
+        Current position.
+
+    Return
+    ------
+    repulsion: ndarray (3,)
+        Repulsion force at position pos.
+    """
+
+    # Check to see if mesh is within radiaus of pos
+    distance_to_mesh = self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3))))
+    print("Distance to Mesh")
+    print(distance_to_mesh)
+    if self.repulsion_radius < self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3)))):
+        repulsion = np.zeros((3,))
+    else:
+        # Find Points within radius of pos.
+        distance = np.linalg.norm(self.repulsion_vertices - pos, axis=1)
+
+        normals_within_range = self.repulsion_normals[np.where(
+            distance < self.repulsion_radius)]
+        distance_within_range = distance[np.where(distance < self.repulsion_radius)]
+
+        # TODO!!!! Get rid of this loop, this is going to be slow
+        # Sum up repulsion forces calculated for each vertex within range
+        moment = 0
+        for thisNorm, thisDist in zip(normals_within_range, distance_within_range):
+            # Calculate repulsion force
+            d = thisDist - self.repulsion_radius
+            thisRepulsion = thisNorm*(d*d*d)/(self.repulsion_radius*self.repulsion_radius)
+            moment += thisRepulsion
+            print("Moment")
+            print(moment)
+
+        if len(normals_within_range) > 0:
+            repulsion = moment/len(normals_within_range)
+        else:
+            repulsion = np.zeros((3,))
+    print("Repulsion")
+    print(repulsion)
+
+    return repulsion
 
 
 def _build_arg_parser():

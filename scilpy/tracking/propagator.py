@@ -544,10 +544,7 @@ class ODFPropagatorMesh(ODFPropagator):
                  theta, dipy_sphere='symmetric724',
                  min_separation_angle=np.pi / 16.,
                  nbr_init_norm_steps=1,
-                 repulsion_scene=None,
-                 repulsion_vertices=None,
-                 repulsion_normals=None,
-                 repulsion_radius=0):
+                 repulsion_force=None):
         """
         Parameters
         ----------
@@ -584,14 +581,8 @@ class ODFPropagatorMesh(ODFPropagator):
         nbr_init_norm_steps: int, optional
             Number of steps to use seed normal rather than selecting from the fODF.
 
-        repulsion_scene: o3d.scene, optional
+        repulsion_force: o3d.scene, optional
             scene containing the meshes that will be used to repulse the streamlines
-        repulstion_vertices: list of numpy arrays, optional
-            vertices of the meshes that will be used to repulse the streamlines
-        repulstion_normals: list of numpy arrays, optional
-            normals of calculated from each vertex used to repulse streamlines
-        repulsion_radius: float, optional
-            only vertices within this radius will be used to repulse streamlines
         """
 
         # Initializing using ODFPropagator
@@ -601,10 +592,7 @@ class ODFPropagatorMesh(ODFPropagator):
         self.nbr_init_norm_steps = nbr_init_norm_steps
 
         # Repulsion options
-        self.repulsion_scene = repulsion_scene
-        self.repulsion_vertices = repulsion_vertices
-        self.repulsion_normals = repulsion_normals
-        self.repulsion_radius = repulsion_radius
+        self.repulsion_force = repulsion_force  #precomputed repulsion force map
 
     def prepare_normal(self, norm_dir):
         """
@@ -682,8 +670,8 @@ class ODFPropagatorMesh(ODFPropagator):
                 new_v = (v1 + 2 * v2 + 2 * v3 + v4) / 6
                 new_dir = TrackingDirection(new_v, dir1.index)
 
-        # Given current position calculate mesh based forces
-        if self.repulsion_scene is not None:
+        # Given current position get the repulsion force
+        if self.repulsion_force is not None:
             repulsion = self._get_repulsion_force(pos)
         else:
             repulsion = np.zeros(3)
