@@ -89,21 +89,36 @@ def vtk_to_voxmm(vts, nibabel_img):
     scale = np.array(nibabel_img.get_header().get_zooms())
     return vtk_to_vox(vts, nibabel_img) * scale
 
-def generate_repulsion_force_map(self, pos):
+def generate_repulsion_force_map(vertices, normals, repulsion_radius, grid_resoluion=1.0):
     """
-    Calculate repulsion force at position pos
+    Given a set of vertex coordinates and normals,
+    generate a repulsion force map
 
     Parameters
     ----------
-    pos: ndarray (3,)
-        Current position.
-
+    vertices: ndarray (N,3)
+        vertices where the repulsion force is computed
+    normals: ndarray (N,3)
+        normals at each vertex (usually calculated from a mesh)
+    repulsion_radius: float
+        radius of the repulsion force (points oustide this radius are given a zero)
+    grid_resolution: float (default 1.0)
+        resolution of the grid used to compute the repulsion force
     Return
     ------
     repulsion: ndarray (3,)
-        Repulsion force at position pos.
+        Repulsion force map calculated in a bounding box around the vertices
     """
 
+    
+    min_x = np.min(vertices[:,0])
+    max_x = np.max(vertices[:,0])
+    min_y = np.min(vertices[:,1])
+    max_y = np.max(vertices[:,1])
+    min_z = np.min(vertices[:,2])
+    max_z = np.max(vertices[:,2])
+
+    mesh_grid
     # Check to see if mesh is within radiaus of pos
     distance_to_mesh = self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3))))
     print("Distance to Mesh")
@@ -212,11 +227,15 @@ def _build_arg_parser():
                          help="Number of streamlines per seed [%(default)s]")
 
     mesh_g = p.add_argument_group('Mesh based repulsion options')
-    mesh_g.add_argument('--repulsion_mesh', default=None,
-                        help='Mesh in LPS used for repulstion of streamlines.')
-    mesh_g.add_argument('--repulsion_radius', type=float, default=0.0,
+    mesh_g.add_argument('--repulsion_vertices', default=None,
+                        help='Vertices in LPS voxmm used for generating repulsion force for streamlines.')
+    mesh_g.add_argument('--repulsion_normals', default=None,
+                        help='Normals for each vertex in the repulsion mesh.')
+    mesh_g.add_argument('--repulsion_radius', type=float, default=2.0,
                         help='Only vertices within this radius will be used'
                         'for repulsion force calculations [%(default)s]')
+    mesh_g.add_argument('--repulsion_grid_resolution', type=float, default=1.0,
+                        help='Resolution of the repulsion grid [%(default)s]')
 
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
@@ -289,34 +308,21 @@ def main():
     odf_sh_res = odf_sh_img.header.get_zooms()[:3]
     dataset = DataVolume(odf_sh_data, odf_sh_res, args.sh_interp)
 
-    logging.debug("Loading repulsion mesh.")
-    if args.repulsion_mesh is not None:
-        repulsion_mesh = o3d.io.read_triangle_mesh(args.repulsion_mesh)
+    logging.debug("Generating repulsion force map.")
+    if args.repulsion_vertices is not None:
+        if args.repulsion_normals is None:
+            parser.error('Repulsion mesh normals must be provided.')
         
-        # scilpy tracking works in vtk_voxel space.  Use the mask to do coversion
-        coords = vtk_to_voxmm(repulsion_mesh.vertices, nib.load(args.in_mask))
-        repulsion_mesh.vertices = o3d.utility.Vector3dVector(coords)
-        
-        repulsion_scene = o3d.t.geometry.RaycastingScene()
-        repulsion_scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(repulsion_mesh))
-
-        repulsion_mesh.compute_vertex_normals()
-        repulsion_vertices = asarray(repulsion_mesh.vertices)
-        repulsion_normals = asarray(repulsion_mesh.vertex_normals) 
+        repulsion_force = generate_repulsion_force_map(args.repulsion_vertices, args.repulsion_normals, args.repulsion_radius, args.repulsion_grid_resolution)
     else:
-        repulsion_scene = None
-        repulsion_vertices = None
-        repulsion_normals = None
+        repulsion_force = None
     
     logging.debug("Instantiating propagator.")
     propagator = ODFPropagatorMesh(
         dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
         args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
         nbr_init_norm_steps=args.nbr_init_norm_steps,
-        repulsion_scene=repulsion_scene, 
-        repulsion_vertices=repulsion_vertices,
-        repulsion_normals=repulsion_normals,
-        repulsion_radius=args.repulsion_radius)
+        repulsion_force=repulsion_force)
 
     logging.debug("Instantiating tracker.")
     tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,

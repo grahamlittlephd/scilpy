@@ -676,7 +676,7 @@ class ODFPropagatorMesh(ODFPropagator):
         else:
             repulsion = np.zeros(3)
 
-        new_pos = pos + self.step_size * np.array(new_dir) + repulsion
+        new_pos = pos + self.step_size * np.array(new_dir)
 
         return new_pos, new_dir, is_direction_valid\
 
@@ -696,36 +696,36 @@ class ODFPropagatorMesh(ODFPropagator):
             Repulsion force at position pos.
         """
 
-        # Check to see if mesh is within radiaus of pos
-        distance_to_mesh = self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3))))
-        print("Distance to Mesh")
-        print(distance_to_mesh)
-        if self.repulsion_radius < self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3)))):
-            repulsion = np.zeros((3,))
-        else:
-            # Find Points within radius of pos.
-            distance = np.linalg.norm(self.repulsion_vertices - pos, axis=1)
+        # # Check to see if mesh is within radiaus of pos
+        # distance_to_mesh = self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3))))
+        # print("Distance to Mesh")
+        # print(distance_to_mesh)
+        # if self.repulsion_radius < self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3)))):
+        repulsion = np.zeros((3,))
+        # else:
+        #     # Find Points within radius of pos.
+        #     distance = np.linalg.norm(self.repulsion_vertices - pos, axis=1)
 
-            normals_within_range = self.repulsion_normals[np.where(
-                distance < self.repulsion_radius)]
-            distance_within_range = distance[np.where(distance < self.repulsion_radius)]
+        #     normals_within_range = self.repulsion_normals[np.where(
+        #         distance < self.repulsion_radius)]
+        #     distance_within_range = distance[np.where(distance < self.repulsion_radius)]
 
-            # TODO!!!! Get rid of this loop, this is going to be slow
-            # Sum up repulsion forces calculated for each vertex within range
-            moment = 0
-            for thisNorm, thisDist in zip(normals_within_range, distance_within_range):
-                # Calculate repulsion force
-                d = thisDist - self.repulsion_radius
-                thisRepulsion = thisNorm*(d*d*d)/(self.repulsion_radius*self.repulsion_radius)
-                moment += thisRepulsion
-                print("Moment")
-                print(moment)
+        #     # TODO!!!! Get rid of this loop, this is going to be slow
+        #     # Sum up repulsion forces calculated for each vertex within range
+        #     moment = 0
+        #     for thisNorm, thisDist in zip(normals_within_range, distance_within_range):
+        #         # Calculate repulsion force
+        #         d = thisDist - self.repulsion_radius
+        #         thisRepulsion = thisNorm*(d*d*d)/(self.repulsion_radius*self.repulsion_radius)
+        #         moment += thisRepulsion
+        #         print("Moment")
+        #         print(moment)
 
-            if len(normals_within_range) > 0:
-                repulsion = moment/len(normals_within_range)
-            else:
-                repulsion = np.zeros((3,))
-        print("Repulsion")
-        print(repulsion)
+        #     if len(normals_within_range) > 0:
+        #         repulsion = moment/len(normals_within_range)
+        #     else:
+        #         repulsion = np.zeros((3,))
+        # print("Repulsion")
+        # print(repulsion)
 
         return repulsion
