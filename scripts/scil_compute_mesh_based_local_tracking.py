@@ -152,9 +152,7 @@ def _build_arg_parser():
 
     mesh_g = p.add_argument_group('Mesh based attachtion/repulsion options')
     mesh_g.add_argument('--repulsion_force_map', default=None,
-                        help='Force map to use for repulstion.')
-    mesh_g.add_argument('--attraction_force_map', default=None,
-                        help='Force map used for attraction')
+                        help='Force map to use for repulsion.')
 
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
@@ -227,21 +225,19 @@ def main():
     odf_sh_res = odf_sh_img.header.get_zooms()[:3]
     dataset = DataVolume(odf_sh_data, odf_sh_res, args.sh_interp)
 
-    logging.debug("Generating repulsion force map.")
-    if args.repulsion_vertices is not None:
-        if args.repulsion_normals is None:
-            parser.error('Repulsion mesh normals must be provided.')
-        
-        repulsion_force = generate_repulsion_force_map(args.repulsion_vertices, args.repulsion_normals, args.repulsion_radius, args.repulsion_grid_resolution)
-    else:
-        repulsion_force = None
+    if args.repulsion_force_map is not None:
+        logging.debug("Loading repulsion force map.")
+        repulsion_force_map_img = nib.load(args.repulsion_force_map)
+        repulsion_force_map_data = repulsion_force_map_img.get_fdata(caching='unchanged', dtype=float)
+        repulsion_force_map_res = repulsion_force_map_img.header.get_zooms()[:3]
+        repulsion_force_map = DataVolume(repulsion_force_map_data, repulsion_force_map_res, 'trilinear')
     
     logging.debug("Instantiating propagator.")
     propagator = ODFPropagatorMesh(
         dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
         args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
         nbr_init_norm_steps=args.nbr_init_norm_steps,
-        repulsion_force=repulsion_force)
+        repulsion_force=repulsion_force_map)
 
     logging.debug("Instantiating tracker.")
     tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,

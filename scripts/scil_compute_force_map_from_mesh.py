@@ -58,20 +58,21 @@ def calculate_force(pos, mesh, repulsion_radius):
     """
 
     # Find Points within radius of pos.
-    distance = np.linalg.norm(mesh.vertices - pos, axis=1)
-    normals_within_range = np.asarray(mesh.vertex_normals)[np.where(distance < repulsion_radius)]
+    distance_3d = mesh.vertices - pos
+    distance = np.linalg.norm(distance_3d, axis=1)
+    
+    distance_3d_within_range = distance_3d[np.where(distance < repulsion_radius)]
     distance_within_range = distance[np.where(distance < repulsion_radius)]
 
     # Sum up repulsion forces calculated for each vertex within range
-    moment = 0
-    for thisNorm, thisDist in zip(normals_within_range, distance_within_range):
-        # Calculate repulsion force
-        d = thisDist - repulsion_radius
-        thisRepulsion = thisNorm*(d*d*d)/(repulsion_radius*repulsion_radius)
-        moment += thisRepulsion
-
-    if len(normals_within_range) > 0:
-        force = moment/len(normals_within_range)
+    mag = 0
+    for thisDist3d, thisDist in zip(distance_3d_within_range, distance_within_range):
+        # Calculate repulsion force magnitude (similar to Schuh 2017, IEEE)
+        mag += (thisDist/repulsion_radius - 1)**2 * thisDist3d/thisDist # signed force magnitude
+        
+        
+    if len(distance_within_range) > 0:
+        force = mag / len(distance_within_range)
     else:
         force = np.zeros((3,))
 
@@ -96,12 +97,15 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map):
     ------
     force_map: nibabel.nifti1.Nifti1Image
         Repulsion force map calculated at each wm voxel
+    force_normals: nibabel.nifti1.Nifti1Image
+        Normal vector from mesh extracted from the closest vertex to each wm voxel
     """
     wm_mask_data = wm_mask_img.get_fdata(caching='unchanged', dtype=float)
     wm_mask_res = wm_mask_img.header.get_zooms()[:3]
     wm_mask = DataVolume(wm_mask_data, wm_mask_res, 'nearest')
     
-    force_map_data = np.zeros(wm_mask.data.shape + (3,))
+    force_map_data = np.zeros(wm_mask.data.shape[:3] + (3,))
+
     # indices of wm_voxels
     wm_indices = np.argwhere(wm_mask_data > 0)
     wm_pnts = np.float32(wm_indices * wm_mask_res)
@@ -122,18 +126,21 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map):
     #nib.save(nib.Nifti1Image(test_wm_data, wm_mask_img.affine), "/home/graham/DATA/dump/test_wm.nii.gz")
 
     for thisPnt in range(0,wm_indices.shape[0]):
-        print("Processing point {}/{}".format(thisPnt, wm_indices.shape[0]))
+        if thisPnt % 1000 == 0:
+            print("Processing point {}/{}".format(thisPnt, wm_indices.shape[0]))
+            
         pos = np.asarray([wm_pnts[thisPnt,0], wm_pnts[thisPnt,1], wm_pnts[thisPnt,2]])
-        force_map_data[wm_indices[thisPnt,0], wm_indices[thisPnt,1], wm_indices[thisPnt,2]] = calculate_force(pos, mesh, repulsion_radius)
+        
+        thisForce = calculate_force(pos, mesh, repulsion_radius)
+        
+        force_map_data[wm_indices[thisPnt,0], wm_indices[thisPnt,1], wm_indices[thisPnt,2],:] = thisForce
 
     if invert_force_map:
         force_map_data = -1 * force_map_data
 
-    force_map_img = nib.Nifti1Image(force_map_data, wm_mask_img.affine)
+    return nib.Nifti1Image(force_map_data, wm_mask_img.affine)
+    
 
-    return force_map_img
-
-## Caculate gradient of force
 
 
 def _build_arg_parser():
@@ -147,7 +154,7 @@ def _build_arg_parser():
                    help='Text file with the coordinates of the surface.')
 
     p.add_argument('force_map',
-                     help='Force map calculated at each wm voxel from mesh')
+                    help='Force map calculated at each wm voxel from mesh')
     
     p.add_argument('--force_resolution', type=float, default=None,
                     help='Resolution of the force map. Default is the resolution of the wm mask')
