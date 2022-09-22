@@ -120,7 +120,8 @@ def main():
         mask_data = mask_img.get_fdata()
         mask_res = mask_img.header.get_zooms()[:3]
         mask = DataVolume(mask_data, mask_res,'nearest')
-        for i, coord in enumerate(coords):
+
+        for i, coord in enumerate(asarray(coords)):
             if i % 1000 == 0:
                 print(i)
 
