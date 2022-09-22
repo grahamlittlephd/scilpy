@@ -105,10 +105,10 @@ def main():
         mesh.vertices = o3d.utility.Vector3dVector(coords)
         mesh.compute_vertex_normals()
         
-        if args.flip_normals:
-            norms = -1 * asarray(mesh.vertex_normals)
-        else:
-            norms = asarray(mesh.vertex_normals)
+        norms = asarray(mesh.vertex_normals)
+
+    if args.flip_normals:
+            norms = -1 * norms
 
     if args.within_mask is not None:
         new_coords = []
@@ -122,10 +122,11 @@ def main():
         mask = DataVolume(mask_data, mask_res,'nearest')
 
         for i, coord in enumerate(asarray(coords)):
-            if i % 1000 == 0:
-                print(i)
+            #if i % 1000 == 0:
+            #   print(i)
 
             if mask.voxmm_to_value(coord[0], coord[1], coord[2], 'corner') > 0:
+                print(i)
                 new_coords.append(coord)
                 new_norms.append(norms[i])
                 indices.append(i)

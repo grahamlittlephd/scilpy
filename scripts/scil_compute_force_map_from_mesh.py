@@ -38,7 +38,7 @@ def vtk_to_voxmm(vts, nibabel_img):
     scale = np.array(nibabel_img.get_header().get_zooms())
     return vtk_to_vox(vts, nibabel_img) * scale
 
-def calculate_force(pos, mesh, repulsion_radius):
+def calculate_force(pos, mesh, repulsion_radius, mag_direction):
     """
     Calculate the force at a given position
 
@@ -50,27 +50,29 @@ def calculate_force(pos, mesh, repulsion_radius):
         Open3d mesh object (with vertex normals already computed)
     repulsion_radius: float
         radius of the repulsion force (points oustide this radius are given a zero)
-    
+    mag_direction: np.array 
+        Same size as mesh.vertices determines whether repulsion or attractive force should be calculated
+         1 indicates repulstion, -1 for attraction and 0 for no force
+
     Return
     ------
     force: np.array
         Repulsion force at the given position
     """
-
     # Find Points within radius of pos.
     distance_3d = mesh.vertices - pos
     distance = np.linalg.norm(distance_3d, axis=1)
     
     distance_3d_within_range = distance_3d[np.where(distance < repulsion_radius)]
     distance_within_range = distance[np.where(distance < repulsion_radius)]
+    mag_direction_within_range = mag_direction[np.where(distance < repulsion_radius)]
 
     # Sum up repulsion forces calculated for each vertex within range
     mag = 0
-    for thisDist3d, thisDist in zip(distance_3d_within_range, distance_within_range):
+    for thisDist3d, thisDist, thisMagDir in zip(distance_3d_within_range, distance_within_range, mag_direction_within_range):
         # Calculate repulsion force magnitude (similar to Schuh 2017, IEEE)
-        mag += (thisDist/repulsion_radius - 1)**2 * thisDist3d/thisDist # signed force magnitude
-        
-        
+        mag -= thisMagDir * (thisDist/repulsion_radius - 1)**2 * thisDist3d/thisDist # signed force magnitude
+
     if len(distance_within_range) > 0:
         force = mag / len(distance_within_range)
     else:
@@ -78,7 +80,7 @@ def calculate_force(pos, mesh, repulsion_radius):
 
     return force
 
-def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map):
+def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map, mag_direction=None):
     """
     Given a set of vertex coordinates and normals,
     generate a repulsion force map
@@ -93,6 +95,11 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map):
     repulsion_radius: float
         radius of the repulsion force (points oustide this radius are given a zero)
     
+    Optional Parameters
+    -------------------
+    mag_direction: np.array
+        Same size as mesh.vertices determines whether repulsion or attractive force should be calculated
+
     Return
     ------
     force_map: nibabel.nifti1.Nifti1Image
@@ -100,6 +107,9 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map):
     force_normals: nibabel.nifti1.Nifti1Image
         Normal vector from mesh extracted from the closest vertex to each wm voxel
     """
+    if mag_direction is None:
+        mag_direction = np.ones((asarray(mesh.vertices).shape[0],))
+    
     wm_mask_data = wm_mask_img.get_fdata(caching='unchanged', dtype=float)
     wm_mask_res = wm_mask_img.header.get_zooms()[:3]
     wm_mask = DataVolume(wm_mask_data, wm_mask_res, 'nearest')
@@ -131,12 +141,14 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map):
             
         pos = np.asarray([wm_pnts[thisPnt,0], wm_pnts[thisPnt,1], wm_pnts[thisPnt,2]])
         
-        thisForce = calculate_force(pos, mesh, repulsion_radius)
+        thisForce = calculate_force(pos, mesh, repulsion_radius, mag_direction)
         
         force_map_data[wm_indices[thisPnt,0], wm_indices[thisPnt,1], wm_indices[thisPnt,2],:] = thisForce
 
     if invert_force_map:
         force_map_data = -1 * force_map_data
+
+    force_map_data = force_map_data*10
 
     return nib.Nifti1Image(force_map_data, wm_mask_img.affine)
     
@@ -159,17 +171,23 @@ def _build_arg_parser():
     p.add_argument('--force_resolution', type=float, default=None,
                     help='Resolution of the force map. Default is the resolution of the wm mask')
     
-    p.add_argument('--repulsion_radius', type=float, default=4.0,
+    p.add_argument('--repulsion_radius', type=float, default=2.0,
                      help='Radius of the repulsion force (points oustide this radius are given a zero)')
-
-    p.add_argument('--output_mesh', default=None,
-                    help='If given output the mesh after flips and reoirentations are applied')
 
     p.add_argument('--flip_orientation', action='store_true',
                        help='Set to true if you want to flip the mesh from LPS to RAS or vice versa prior to calculating the force map')
 
     p.add_argument('--invert_force_map', action='store_true',
                        help='Negates the force map such that negative values become positive')
+    p.add_argument('--force_attaction', default=None,
+                    help='Text file with indices for each vertices that should use attraction')
+    p.add_argument('--force_null', default=None,
+                    help='Text file with indices for each vertices that should use no force')
+
+    add_overwrite_arg(p)
+    return p
+
+    p.add_argument('')
 
     add_overwrite_arg(p)
     return p
@@ -201,8 +219,14 @@ def main():
     mesh.vertices = o3d.utility.Vector3dVector(coords_voxmm)
     mesh.compute_vertex_normals()
 
+    mag_direction = np.ones((asarray(mesh.vertices).shape[0],))
+    if args.force_attaction is not None:
+        mag_direction[np.loadtxt(args.force_attaction, dtype=int)] = -1
+    if args.force_null is not None:
+        mag_direction[np.loadtxt(args.force_null, dtype=int)] = 0
+
     # Calculate force map at each wm voxel
-    force_map_img = generate_force_map(mesh, mask_img, args.repulsion_radius, args.invert_force_map)
+    force_map_img = generate_force_map(mesh, mask_img, args.repulsion_radius, args.invert_force_map, mag_direction=mag_direction)
 
     # Save mesh
     if args.force_map is not None:
