@@ -15,6 +15,8 @@ from copy import deepcopy
 from scilpy.io.utils import (add_overwrite_arg,
                              assert_inputs_exist,
                              assert_outputs_exist)
+from scilpy.image.datasets import DataVolume
+
 import open3d as o3d
 import nibabel as nib
 import numpy as np
@@ -60,6 +62,12 @@ def _build_arg_parser():
 
     p.add_argument('--flip_normals', action='store_true',
                        help='If given normals will be flipped in the inward direction')
+    
+    p.add_argument('--within_mask', default=None,
+                    help='If given, only output the vertices/normals within the mask')
+    
+    p.add_argument('--output_indices', default=None,
+                    help='If given, output the indices of the vertices within the mask')
 
     add_overwrite_arg(p)
     return p
@@ -101,6 +109,31 @@ def main():
             norms = -1 * asarray(mesh.vertex_normals)
         else:
             norms = asarray(mesh.vertex_normals)
+
+    if args.within_mask is not None:
+        new_coords = []
+        new_norms = []
+        indices = []
+        
+        #Select coords and norms within mask
+        mask_img = nib.load(args.within_mask)
+        mask_data = mask_img.get_fdata()
+        mask_res = mask_img.header.get_zooms()[:3]
+        mask = DataVolume(mask_data, mask_res,'nearest')
+        for i, coord in enumerate(coords):
+            if i % 1000 == 0:
+                print(i)
+
+            if mask.voxmm_to_value(coord[0], coord[1], coord[2], 'corner') > 0:
+                new_coords.append(coord)
+                new_norms.append(norms[i])
+                indices.append(i)
+    
+        coords = np.array(new_coords)
+        norms = np.array(new_norms)
+
+        if args.output_indices is not None:
+            savetxt(args.output_indices, indices, fmt='%d')
 
     savetxt(args.out_coords, coords)
     savetxt(args.out_norms, norms)
