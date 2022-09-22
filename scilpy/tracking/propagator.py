@@ -544,7 +544,8 @@ class ODFPropagatorMesh(ODFPropagator):
                  theta, dipy_sphere='symmetric724',
                  min_separation_angle=np.pi / 16.,
                  nbr_init_norm_steps=1,
-                 repulsion_force=None):
+                 repulsion_force=None,
+                 repulsion_weight=1.0):
         """
         Parameters
         ----------
@@ -593,6 +594,7 @@ class ODFPropagatorMesh(ODFPropagator):
 
         # Repulsion options
         self.repulsion_force = repulsion_force  #precomputed repulsion force map
+        self.repulsion_weight = repulsion_weight
 
     def prepare_normal(self, norm_dir):
         """
@@ -636,7 +638,7 @@ class ODFPropagatorMesh(ODFPropagator):
         """
         # Finding last coordinate
         pos = line[-1]
-
+     
         # If seeded with normal direction take specified steps in normal direction before tracking
         if len(line) <= self.nbr_init_norm_steps+1:
             is_direction_valid = True
@@ -670,18 +672,18 @@ class ODFPropagatorMesh(ODFPropagator):
                 new_v = (v1 + 2 * v2 + 2 * v3 + v4) / 6
                 new_dir = TrackingDirection(new_v, dir1.index)
 
-        # Given current position get the repulsion force
+        # Given current position get the repulsion force and add it to new direction
         if self.repulsion_force is not None:
-            repulsion = self._get_repulsion_force(pos)
-        else:
-            repulsion = np.zeros(3)
+            repulsion = self._get_repulsion_force(pos, new_dir)
+            new_v = np.array(new_dir) + repulsion
+            new_dir = TrackingDirection(new_v, self.sphere.find_closest(new_v))
 
         new_pos = pos + self.step_size * np.array(new_dir)
 
         return new_pos, new_dir, is_direction_valid\
 
 
-    def _get_repulsion_force(self, pos):
+    def _get_repulsion_force(self, pos, new_dir):
         """
         Calculate repulsion force at position pos
 
@@ -693,39 +695,28 @@ class ODFPropagatorMesh(ODFPropagator):
         Return
         ------
         repulsion: ndarray (3,)
-            Repulsion force at position pos.
+            Repulsion force at position pos weighted by 
         """
 
-        # # Check to see if mesh is within radiaus of pos
-        # distance_to_mesh = self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3))))
-        # print("Distance to Mesh")
-        # print(distance_to_mesh)
-        # if self.repulsion_radius < self.repulsion_scene.compute_distance(np.float32(pos.reshape((1,3)))):
-        repulsion = np.zeros((3,))
-        # else:
-        #     # Find Points within radius of pos.
-        #     distance = np.linalg.norm(self.repulsion_vertices - pos, axis=1)
+        # Get repulsion force at position pos
+        repulsion_from_map = self.repulsion_force.voxmm_to_value(pos[0], pos[1], pos[2], 'corner')
+        
+        if np.linalg.norm(repulsion_from_map) == 0:
+            return np.zeros((3,))
+        else:
+            # scale repulsion force by the dot product of the repulsion force and the new direction
+            return self.repulsion_weight * repulsion_from_map * np.dot(repulsion_from_map / np.linalg.norm(repulsion_from_map), np.array(new_dir))
 
-        #     normals_within_range = self.repulsion_normals[np.where(
-        #         distance < self.repulsion_radius)]
-        #     distance_within_range = distance[np.where(distance < self.repulsion_radius)]
-
-        #     # TODO!!!! Get rid of this loop, this is going to be slow
-        #     # Sum up repulsion forces calculated for each vertex within range
-        #     moment = 0
-        #     for thisNorm, thisDist in zip(normals_within_range, distance_within_range):
-        #         # Calculate repulsion force
-        #         d = thisDist - self.repulsion_radius
-        #         thisRepulsion = thisNorm*(d*d*d)/(self.repulsion_radius*self.repulsion_radius)
-        #         moment += thisRepulsion
-        #         print("Moment")
-        #         print(moment)
-
-        #     if len(normals_within_range) > 0:
-        #         repulsion = moment/len(normals_within_range)
-        #     else:
-        #         repulsion = np.zeros((3,))
-        # print("Repulsion")
-        # print(repulsion)
-
-        return repulsion
+def smf(x, a, b):
+    """
+    Smooth step function
+    """
+    if x < a:
+        return 0
+    elif x > b:
+        return 1
+    elif a < x < (a+b)/2:
+        return 2*((x - a) / (b - a))**2
+    else:
+        return 1 - 2*((b - x) / (b - a))**2
+    

@@ -153,6 +153,8 @@ def _build_arg_parser():
     mesh_g = p.add_argument_group('Mesh based attachtion/repulsion options')
     mesh_g.add_argument('--repulsion_force_map', default=None,
                         help='Force map to use for repulsion.')
+    mesh_g.add_argument('--repulsion_force_weight', type=float, default=1.0,
+                        help='Weight of the repulsion force.')
 
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
@@ -231,13 +233,16 @@ def main():
         repulsion_force_map_data = repulsion_force_map_img.get_fdata(caching='unchanged', dtype=float)
         repulsion_force_map_res = repulsion_force_map_img.header.get_zooms()[:3]
         repulsion_force_map = DataVolume(repulsion_force_map_data, repulsion_force_map_res, 'trilinear')
-    
+    else:
+        repulsion_force_map = None
+
     logging.debug("Instantiating propagator.")
     propagator = ODFPropagatorMesh(
         dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
         args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
         nbr_init_norm_steps=args.nbr_init_norm_steps,
-        repulsion_force=repulsion_force_map)
+        repulsion_force=repulsion_force_map,
+        repulsion_weight=args.repulsion_force_weight)
 
     logging.debug("Instantiating tracker.")
     tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
