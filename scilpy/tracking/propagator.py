@@ -705,7 +705,8 @@ class ODFPropagatorMesh(ODFPropagator):
             return np.zeros((3,))
         else:
             # scale repulsion force by the dot product of the repulsion force and the new direction
-            return self.repulsion_weight * repulsion_from_map * np.dot(repulsion_from_map / np.linalg.norm(repulsion_from_map), np.array(new_dir))
+            # only active when new direction is facing repulsion force (smf function)
+            return self.repulsion_weight * repulsion_from_map * smf(-np.dot(repulsion_from_map / np.linalg.norm(repulsion_from_map), np.array(new_dir)),0,1)
 
 def smf(x, a, b):
     """

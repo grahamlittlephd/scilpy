@@ -153,7 +153,7 @@ def _build_arg_parser():
     mesh_g = p.add_argument_group('Mesh based attachtion/repulsion options')
     mesh_g.add_argument('--repulsion_force_map', default=None,
                         help='Force map to use for repulsion.')
-    mesh_g.add_argument('--repulsion_force_weight', type=float, default=1.0,
+    mesh_g.add_argument('--repulsion_force_weight', type=float, default=0.1,
                         help='Weight of the repulsion force.')
 
     m_g = p.add_argument_group('Memory options')
