@@ -148,7 +148,7 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map, ma
     if invert_force_map:
         force_map_data = -1 * force_map_data
 
-    force_map_data = force_map_data*10
+    force_map_data = force_map_data*10 # scale for visualization in fsleyes
 
     return nib.Nifti1Image(force_map_data, wm_mask_img.affine)
     
