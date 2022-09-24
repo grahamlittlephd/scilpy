@@ -179,7 +179,7 @@ def _build_arg_parser():
 
     p.add_argument('--invert_force_map', action='store_true',
                        help='Negates the force map such that negative values become positive')
-    p.add_argument('--force_attaction', default=None,
+    p.add_argument('--force_attraction', default=None,
                     help='Text file with indices for each vertices that should use attraction')
     p.add_argument('--force_null', default=None,
                     help='Text file with indices for each vertices that should use no force')
@@ -220,8 +220,8 @@ def main():
     mesh.compute_vertex_normals()
 
     mag_direction = np.ones((asarray(mesh.vertices).shape[0],))
-    if args.force_attaction is not None:
-        mag_direction[np.loadtxt(args.force_attaction, dtype=int)] = -1
+    if args.force_attraction is not None:
+        mag_direction[np.loadtxt(args.force_attraction, dtype=int)] = -1
     if args.force_null is not None:
         mag_direction[np.loadtxt(args.force_null, dtype=int)] = 0
 
