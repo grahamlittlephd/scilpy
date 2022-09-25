@@ -69,9 +69,10 @@ def calculate_force(pos, mesh, repulsion_radius, mag_direction):
 
     # Sum up repulsion forces calculated for each vertex within range
     mag = 0
-    for thisDist3d, thisDist, thisMagDir in zip(distance_3d_within_range, distance_within_range, mag_direction_within_range):
-        # Calculate repulsion force magnitude (similar to Schuh 2017, IEEE)
-        mag -= thisMagDir * (thisDist/repulsion_radius - 1)**2 * thisDist3d/thisDist # signed force magnitude
+    if np.sum(np.abs(mag_direction_within_range)) > 0:
+        for thisDist3d, thisDist, thisMagDir in zip(distance_3d_within_range, distance_within_range, mag_direction_within_range):
+            # Calculate repulsion force magnitude (similar to Schuh 2017, IEEE)
+            mag -= thisMagDir * (thisDist/repulsion_radius - 1)**2 * thisDist3d/thisDist # signed force magnitude
 
     if len(distance_within_range) > 0:
         force = mag / len(distance_within_range)
@@ -132,8 +133,6 @@ def generate_force_map(mesh, wm_mask_img, repulsion_radius, invert_force_map, ma
     
     wm_indices = wm_indices[mesh_distance<repulsion_radius,:]
     wm_pnts = wm_pnts[mesh_distance<repulsion_radius,:]
-    
-    #nib.save(nib.Nifti1Image(test_wm_data, wm_mask_img.affine), "/home/graham/DATA/dump/test_wm.nii.gz")
 
     for thisPnt in range(0,wm_indices.shape[0]):
         if thisPnt % 1000 == 0:
