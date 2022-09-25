@@ -171,7 +171,7 @@ def _build_arg_parser():
     p.add_argument('--force_resolution', type=float, default=None,
                     help='Resolution of the force map. Default is the resolution of the wm mask')
     
-    p.add_argument('--repulsion_radius', type=float, default=2.0,
+    p.add_argument('--repulsion_radius', type=float, default=3.0,
                      help='Radius of the repulsion force (points oustide this radius are given a zero)')
 
     p.add_argument('--flip_orientation', action='store_true',
@@ -181,11 +181,9 @@ def _build_arg_parser():
                        help='Negates the force map such that negative values become positive')
     
     p.add_argument('--force_attraction', default=None,
-                    help='Text file with indices for each vertices that should use attraction')
+                    help='Text file with indices for each vertices that should use attraction, if given sets all other non-repulsion vertices to zero')
     p.add_argument('--force_repulsion', default=None,
-                    help='Text file with indices for each vertices that should use repulsion')
-    p.add_argument('--force_null', default=None,
-                    help='Text file with indices for each vertices that should use no force')
+                    help='Text file with indices for each vertices that should use repulsion, if given sets all other non-attraction vertices to zero')
 
     add_overwrite_arg(p)
     return p
@@ -222,13 +220,14 @@ def main():
     mesh.vertices = o3d.utility.Vector3dVector(coords_voxmm)
     mesh.compute_vertex_normals()
 
-    mag_direction = np.zeros((asarray(mesh.vertices).shape[0],))
-    if args.force_attraction is not None:
-        mag_direction[np.loadtxt(args.force_attraction, dtype=int)] = -1
-    if args.force_null is not None:
-        mag_direction[np.loadtxt(args.force_null, dtype=int)] = 0
-    if args.force_repulsion is not None:
-        mag_direction[np.loadtxt(args.force_repulsion, dtype=int)] = 1
+    if args.force_attraction or args.force_repulsion:
+        mag_direction = np.zeros((asarray(mesh.vertices).shape[0],))
+        if args.force_attraction is not None:
+            mag_direction[np.loadtxt(args.force_attraction, dtype=int)] = -1
+        if args.force_repulsion is not None:
+            mag_direction[np.loadtxt(args.force_repulsion, dtype=int)] = 1
+    else:
+        mag_direction = np.ones((asarray(mesh.vertices).shape[0],))
 
     # Calculate force map at each wm voxel
     force_map_img = generate_force_map(mesh, mask_img, args.repulsion_radius, args.invert_force_map, mag_direction=mag_direction)
