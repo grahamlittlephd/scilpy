@@ -680,6 +680,10 @@ class ODFPropagatorMesh(ODFPropagator):
 
         new_pos = pos + self.step_size * np.array(new_dir)
 
+        # Uncomment if you want to visualize seeds
+        #if len(line) > 1:
+        #    is_direction_valid = False
+
         return new_pos, new_dir, is_direction_valid\
 
 
