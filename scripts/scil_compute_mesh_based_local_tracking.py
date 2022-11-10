@@ -157,8 +157,17 @@ def _build_arg_parser():
                         help='Weight of the repulsion force.')
 
     mesh_set = p.add_argument_group('Surface Enhanced Tracking options')
-    mesh_set.add_argument('--set_mesh', default=None)
-     
+    mesh_set.add_argument('--set_mesh', default=None,
+                        help='Mesh in LPS coordinates for surface enhanced tracking.')
+    mesh_set.add_argument('--set_laplacian_smooth_iter', type=float, default=2,
+                        help='Number of iterations for the initial laplacian smoothing.')
+    mesh_set.add_argument('--set_laplacian_smooth_weight', type=float, default=10.0,
+                        help='Weight of the initial laplacian smoothing.')
+    mesh_set.add_argument('--set_stiffness_flow_iter', type=float, default=5,
+                        help='Number of iterations for the stiffness flow.')
+    mesh_set.add_argument('--set_stiffness_flow_diffusion_step', type=float, default=10.0,
+                        help='Diffusion step for the stiffness flow.')
+
 
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
