@@ -103,12 +103,17 @@ def main():
         
         # Recalculate normals after transformation
         mesh.vertices = o3d.utility.Vector3dVector(coords)
-        mesh.compute_vertex_normals()
+        affine = nib.load(args.apply_transform).get_affine()
+        diagnol_ones = [affine[0,0]/abs(affine[0,0]), affine[1,1]/abs(affine[1,1]), affine[2,2]/abs(affine[2,2])]
+        norms = norms * diagnol_ones
         
-        norms = asarray(mesh.vertex_normals)
+        # TODO: Test this on multiple input for some reason doesn't work 
+        # on raw HCP input meshes. something to do with the transform
+        #mesh.compute_vertex_normals()
+        #norms = asarray(mesh.vertex_normals)
 
     if args.flip_normals:
-            norms = -1 * norms
+        norms = -1 * norms
 
     if args.within_mask is not None:
         new_coords = []

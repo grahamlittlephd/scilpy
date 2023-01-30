@@ -118,7 +118,7 @@ def prepare_filtering_list(parser, args):
 
         _, _, filter_mode, filter_criteria = roi_opt
 
-        if filter_mode not in ['any', 'all', 'either_end', 'both_ends']:
+        if filter_mode not in ['any', 'all', 'either_end', 'both_ends', 'only_start', 'only_end']:
             parser.error('{} is not a valid option for filter_mode'.format(
                 filter_mode))
 
@@ -129,7 +129,7 @@ def prepare_filtering_list(parser, args):
     return roi_opt_list, only_filtering_list
 
 
-def streamline_endpoints_in_mesh(sft, target_mesh, both_ends=False, dist_thr=0.1):
+def streamline_endpoints_in_mesh(sft, target_mesh, both_ends=False, only_start=False, only_end=False, dist_thr=0.1):
     """
     Parameters
     ----------
@@ -139,6 +139,10 @@ def streamline_endpoints_in_mesh(sft, target_mesh, both_ends=False, dist_thr=0.1
         Mesh oriented RAS mm in which.
     both_ends : bool
         If True, both end points must be within mesh.
+    only_start : bool
+        If True, only start point must be within mesh.
+    only_end : bool
+        If True, only end point must be within mesh.
     dist_thr : float
         Distance threshold in mm to consider a point in the mesh.
     Returns
@@ -171,7 +175,14 @@ def streamline_endpoints_in_mesh(sft, target_mesh, both_ends=False, dist_thr=0.1
             # Check if both endpoints are within mesh
             if signed_distance[0] < dist_thr and signed_distance[1] < dist_thr:
                 filter_list.append(i)
-        
+        elif only_end:
+            # Check to see if end point of streamline is within mesh
+            if signed_distance[-1] < dist_thr:
+                filter_list.append(i)
+        elif only_start:
+            # Check to see if start point of streamline is within mesh
+            if signed_distance[0] < dist_thr:
+                filter_list.append(i)
         else:
             # Check if either endpoint is within mesh
             if signed_distance[0] < dist_thr or signed_distance[1] < dist_thr:
@@ -227,7 +238,7 @@ def streamlines_in_mesh(sft, target_mesh, all_in=False, dist_thr=0.1):
 
     return filter_list
 
-def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect_min_angle=0.0, intersect_max_angle=0.5, intersect_dist=3.0):
+def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, only_start=False, only_end=False, intersect_min_angle=0.0, intersect_max_angle=0.5, intersect_dist=3.0):
     """
     Parameters
     ----------
@@ -237,6 +248,10 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
         Mesh oriented RAS mm in which.
     both_ends : bool
         If True, both end points must be within mesh.
+    only_start : bool
+        If True, only the start point must be within mesh.
+    only_end : bool
+        If True, only the end point must be within mesh.
     intersect_min_angle : float
         Minimum angle between streamline and mesh surface in radians.
     intersect_max_angle : float
@@ -298,6 +313,20 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
             if not (np.any(intersect_ind < nbr_of_steps) and np.any(intersect_ind >= nbr_of_steps)):
                 continue
 
+        # If only_start then check to make sure at least one intersection exists at the beginning
+        if only_start:
+            if len(intersect_ind) < 1 or len(intersect_ind) >= 2:
+                continue
+            if not np.any(intersect_ind < nbr_of_steps):
+                continue
+
+        # If only_end then check to make sure at least one intersection exists at the end
+        if only_end:
+            if len(intersect_ind) < 1 or len(intersect_ind) >= 2:
+                continue
+            if not np.any(intersect_ind >= nbr_of_steps):
+                continue
+
         # For each intersection throw a ray from the start_pnt to the mesh and get angle
         angles = []
         for start_pnt, end_pnt in zip(intersect_start, intersect_end):
@@ -322,6 +351,14 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, intersect
             if (np.any(np.logical_and(start_angles > intersect_min_angle, start_angles < intersect_max_angle)) and
                       np.any(np.logical_and(end_angles > intersect_min_angle, end_angles < intersect_max_angle))):
                 filter_list.append(i)
+        elif only_start:
+            start_angles = angles[intersect_ind < nbr_of_steps]
+            if (np.any(np.logical_and(start_angles > intersect_min_angle, start_angles < intersect_max_angle))):
+                filter_list.append(i)
+        elif only_end:
+            end_angles = angles[intersect_ind >= nbr_of_steps]
+            if (np.any(np.logical_and(end_angles > intersect_min_angle, end_angles < intersect_max_angle))):
+                filter_list.append(i)
         else:
             if np.any(np.logical_and(angles > intersect_min_angle, angles < intersect_max_angle)):
                 filter_list.append(i)
@@ -337,7 +374,7 @@ def filter_mesh_roi(sft, mesh, filter_type, is_exclude, dist_thr=0.1):
     mesh : o3d.geometry.TriangleMesh
         Mesh oriented RAS mm.
     filter_type: str
-        One of the 3 following choices, 'any', 'all', 'either_end', 'both_ends'.
+        One of the 5 following choices, 'any', 'all', 'either_end', 'both_ends', 'only_start', 'only_end'.
     is_exclude: bool
         Value to indicate if the ROI is an AND (false) or a NOT (true).
     dist_thr : float
@@ -360,6 +397,8 @@ def filter_mesh_roi(sft, mesh, filter_type, is_exclude, dist_thr=0.1):
         # End point filtering
         line_based_indices = streamline_endpoints_in_mesh(sft, mesh,
                                                           both_ends=filter_type == 'both_ends',
+                                                          only_start=filter_type == 'only_start',
+                                                          only_end=filter_type == 'only_end',
                                                           dist_thr=dist_thr)
 
     # If the 'exclude' option is used, the selection is inverted
@@ -391,7 +430,7 @@ def filter_mesh_intersect(sft, mesh, filter_type, is_exclude, intersect_min_angl
     mesh : o3d.geometry.TriangleMesh
         Mesh oriented RAS mm.
     filter_type: str
-        One of the 2 following choices, 'either_end', 'both_ends'.
+        One of the 4 following choices, 'either_end', 'both_ends', 'only_start', 'only_end'.
     is_exclude: bool
         Value to indicate if the ROI is an AND (false) or a NOT (true).
     intersect_min_angle : float
@@ -407,9 +446,11 @@ def filter_mesh_intersect(sft, mesh, filter_type, is_exclude, intersect_min_angl
     """
 
     line_based_indices = []
-    if filter_type in ['either_end', 'both_ends']:
+    if filter_type in ['either_end', 'both_ends', 'only_start', 'only_end']:
         line_based_indices = streamlines_intersect_with_mesh(sft, mesh,
                                                              both_ends=filter_type == 'both_ends',
+                                                             only_start=filter_type == 'only_start',
+                                                             only_end=filter_type == 'only_end',
                                                              intersect_min_angle=intersect_min_angle,
                                                              intersect_max_angle=intersect_max_angle,
                                                              intersect_dist=intersect_dist)

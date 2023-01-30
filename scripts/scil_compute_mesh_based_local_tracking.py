@@ -249,6 +249,10 @@ def main():
     else:
         repulsion_force_map = None
 
+    # Calculate stiffness flow
+    if args.set_mesh is not None:
+        print('Placeholder SET not implemented yet')
+
     logging.debug("Instantiating propagator.")
     propagator = ODFPropagatorMesh(
         dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,

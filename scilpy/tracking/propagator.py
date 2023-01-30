@@ -555,6 +555,8 @@ class ODFPropagatorMesh(ODFPropagator):
             The step size for tracking.
         rk_order: int
             Order for the Runge Kutta integration.
+        algo: string
+            Tracking algorithm. One of 'det' or 'prob'.
         theta: float
             Maximum angle (radians) between two steps.
         dipy_sphere: string, optional
