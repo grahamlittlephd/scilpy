@@ -211,10 +211,6 @@ def main():
 
     if args.in_norm_list is not None:
         normals = tuple(map(tuple, loadtxt(args.in_norm_list)))
-        normals_list = normals
-        for i in range(0,args.nbr_sps-1):
-            normals_list = normals_list + normals
-        normals = normals_list
     else:
         normals = None
 
