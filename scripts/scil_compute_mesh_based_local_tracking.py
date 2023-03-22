@@ -208,10 +208,6 @@ def main():
 
     logging.debug("Loading explicit seed points and normals")
     seeds = tuple(map(tuple, loadtxt(args.in_seed_list)))
-    seed_list = seeds
-    for i in range(0,args.nbr_sps-1):
-        seed_list = seed_list + seeds
-    seeds = seed_list
 
     if args.in_norm_list is not None:
         normals = tuple(map(tuple, loadtxt(args.in_norm_list)))
@@ -262,7 +258,11 @@ def main():
         repulsion_weight=args.repulsion_force_weight)
 
     logging.debug("Instantiating tracker.")
-    tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
+    rng_seed = args.rng_seed
+    streamlines =[]
+    new_seeds = []
+    for i in range(0,args.nbr_sps-1):
+        tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
                       max_nbr_pts, max_invalid_dirs,
                       compression_th=args.compress,
                       nbr_processes=args.nbr_processes,
@@ -271,9 +271,15 @@ def main():
                       track_forward_only=forward_only,
                       skip=args.skip)
 
-    start = time.time()
-    logging.debug("Tracking...")
-    streamlines, seeds = tracker.track()
+        start = time.time()
+        
+        logging.debug("Tracking seed round {}...".format(i+1))
+        this_streamlines, this_seeds = tracker.track()
+        streamlines = streamlines + this_streamlines
+        new_seeds = new_seeds + this_seeds
+        rng_seed = rng_seed + 1
+
+    seeds = new_seeds
 
     str_time = "%.2f" % (time.time() - start)
     logging.debug("Tracked {} streamlines (out of {} seeds), in {} seconds.\n"
