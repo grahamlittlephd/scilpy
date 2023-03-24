@@ -343,4 +343,6 @@ def sample_distribution(dist):
     cdf = dist.cumsum()
     if cdf[-1] == 0:
         return None
-    return cdf.searchsorted(np.random.random() * cdf[-1])
+    rng = np.random.default_rng()
+    return cdf.searchsorted(rng.random() * cdf[-1])
+    #return cdf.searchsorted(np.random.random() * cdf[-1])

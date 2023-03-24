@@ -49,8 +49,6 @@ import time
 import dipy.core.geometry as gm
 import nibabel as nib
 
-import numpy as np
-
 from numpy import loadtxt
 from dipy.io.stateful_tractogram import StatefulTractogram, Space, \
                                         set_sft_logger_level
@@ -245,19 +243,21 @@ def main():
     if args.set_mesh is not None:
         print('Placeholder SET not implemented yet')
 
-    logging.debug("Instantiating propagator.")
-    propagator = ODFPropagatorMesh(
-        dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
-        args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
-        nbr_init_norm_steps=args.nbr_init_norm_steps,
-        repulsion_force=repulsion_force_map,
-        repulsion_weight=args.repulsion_force_weight)
+    
 
     logging.debug("Instantiating tracker.")
     rng_seed = args.rng_seed
     streamlines =[]
     new_seeds = []
-    for i in range(0,args.nbr_sps-1):
+    for i in range(0,args.nbr_sps):
+        logging.debug("Instantiating propagator.")
+        from scilpy.tracking.propagator import ODFPropagatorMesh
+        propagator = ODFPropagatorMesh(dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
+                        args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
+                        nbr_init_norm_steps=args.nbr_init_norm_steps,
+                        repulsion_force=repulsion_force_map,
+                        repulsion_weight=args.repulsion_force_weight)
+
         tracker = Tracker(propagator, mask, seed_generator, nbr_seeds, min_nbr_pts,
                       max_nbr_pts, max_invalid_dirs,
                       compression_th=args.compress,
