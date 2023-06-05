@@ -24,6 +24,12 @@ import numpy as np
 from numpy import (asarray, hstack, ones, matmul, squeeze, savetxt)
 from numpy.linalg import (inv, norm)
 from nibabel.affines import apply_affine
+
+from dipy.io.stateful_tractogram import StatefulTractogram, Space, \
+                                        set_sft_logger_level
+from dipy.io.stateful_tractogram import Origin
+from dipy.io.streamline import save_tractogram
+
 EPILOG = """
 """
 
@@ -69,6 +75,8 @@ def _build_arg_parser():
     p.add_argument('--output_indices', default=None,
                     help='If given, output the indices of the vertices within the mask')
 
+    p.add_argument('--output_trk', default=None,
+                   help='If given, output a trk file with the seed points for visualization, --apply_transform must be provided to save stateful tractogram')
     add_overwrite_arg(p)
     return p
 
@@ -96,6 +104,7 @@ def main():
 
     # output LPS mesh for MI-brain visualization
     lps_mesh = deepcopy(mesh)
+    lps_coords=deepcopy(coords)
     lps_mesh.vertices = o3d.utility.Vector3dVector(coords)
 
     if args.apply_transform is not None:
@@ -148,12 +157,17 @@ def main():
 
     # Write a seeds into a trk file for visualization 
     if args.output_trk:
+        assert(args.apply_transform is not None)
         seeds=[]
         for i, coord in enumerate(coords):
-            seeds.append(coord)
+            seeds.append([coord, coord + norms[i]*2])
         seeds = np.array(seeds)
-        trk = nib.streamlines.Tractogram(seeds, affine_to_rasmm=np.eye(4))
-        nib.streamlines.save(trk, args.output_trk)
+
+        
+        sft = StatefulTractogram(seeds, nib.load(args.apply_transform), 
+                                 Space.VOXMM,
+                                 Origin.TRACKVIS)
+        save_tractogram(sft, args.output_trk)
 
     
 if __name__ == "__main__":
