@@ -127,11 +127,7 @@ def main():
         mask = DataVolume(mask_data, mask_res,'nearest')
 
         for i, coord in enumerate(asarray(coords)):
-            #if i % 1000 == 0:
-            #   print(i)
-
             if mask.voxmm_to_value(coord[0], coord[1], coord[2], 'corner') > 0:
-                print(i)
                 new_coords.append(coord)
                 new_norms.append(norms[i])
                 indices.append(i)
@@ -150,5 +146,15 @@ def main():
         mesh.vertices = o3d.utility.Vector3dVector(coords)
         o3d.io.write_triangle_mesh(args.output_mesh, lps_mesh)
 
+    # Write a seeds into a trk file for visualization 
+    if args.output_trk:
+        seeds=[]
+        for i, coord in enumerate(coords):
+            seeds.append(coord)
+        seeds = np.array(seeds)
+        trk = nib.streamlines.Tractogram(seeds, affine_to_rasmm=np.eye(4))
+        nib.streamlines.save(trk, args.output_trk)
+
+    
 if __name__ == "__main__":
     main()
