@@ -65,10 +65,16 @@ def _build_arg_parser():
 
     p.add_argument('--ras', action='store_true',
                        help='Set to true if input mesh is in RAS')
-
+    
+    p.add_argument('--las', action='store_true',
+                       help='Set to true if input mesh is in LAS')
+    
     p.add_argument('--flip_normals', action='store_true',
                        help='If given normals will be flipped in the inward direction')
     
+    p.add_argument('--flip_normals_xy', action='store_true',
+                       help='If given normals will be flipped in the inward direction')
+
     p.add_argument('--within_mask', default=None,
                     help='If given, only output the vertices/normals within the mask')
     
@@ -102,6 +108,9 @@ def main():
         coords[:,0] = -1 * coords[:,0]
         coords[:,1] = -1 * coords[:,1]
 
+    if args.las:
+        coords[:,1] = -1 * coords[:,1]
+
     # output LPS mesh for MI-brain visualization
     lps_mesh = deepcopy(mesh)
     lps_coords=deepcopy(coords)
@@ -109,7 +118,7 @@ def main():
 
     if args.apply_transform is not None:
         coords = vtk_to_voxmm(coords, nib.load(args.apply_transform))
-        
+
         # Recalculate normals after transformation
         mesh.vertices = o3d.utility.Vector3dVector(coords)
         affine = nib.load(args.apply_transform).get_affine()
@@ -124,6 +133,10 @@ def main():
     if args.flip_normals:
         norms = -1 * norms
 
+    if args.flip_normals_xy:
+        norms[:,0] = -1 * norms[:,0]
+        norms[:,1] = -1 * norms[:,1]
+    
     if args.within_mask is not None:
         new_coords = []
         new_norms = []
@@ -155,7 +168,7 @@ def main():
         mesh.vertices = o3d.utility.Vector3dVector(coords)
         o3d.io.write_triangle_mesh(args.output_mesh, lps_mesh)
 
-    # Write a seeds into a trk file for visualization 
+    # Write seeds into a trk file for visualization 
     if args.output_trk:
         assert(args.apply_transform is not None)
         seeds=[]
@@ -163,10 +176,10 @@ def main():
             seeds.append([coord, coord + norms[i]*2])
         seeds = np.array(seeds)
 
-        
         sft = StatefulTractogram(seeds, nib.load(args.apply_transform), 
                                  Space.VOXMM,
-                                 Origin.TRACKVIS)
+                                 Origin.NIFTI)
+
         save_tractogram(sft, args.output_trk)
 
     

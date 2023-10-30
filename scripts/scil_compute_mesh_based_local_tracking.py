@@ -53,7 +53,7 @@ from numpy import loadtxt
 from dipy.io.stateful_tractogram import StatefulTractogram, Space, \
                                         set_sft_logger_level
 from dipy.io.stateful_tractogram import Origin
-from dipy.io.streamline import save_tractogram
+from dipy.io.streamline import save_tractogram, load_trk
 
 from scilpy.io.utils import (add_processes_arg, add_sphere_arg,
                              add_verbose_arg,
@@ -205,7 +205,28 @@ def main():
     forward_only = True
 
     logging.debug("Loading explicit seed points and normals")
-    seeds = tuple(map(tuple, loadtxt(args.in_seed_list)))
+    # If seeds are in trk then
+    if args.in_seed_list.endswith('.trk'):
+        trk_streamlines = load_trk(args.in_seed_list, 'same')
+        trk_streamlines.to_voxmm()
+        trk_streamlines.to_corner()
+        print(trk_streamlines._space)
+        print(trk_streamlines._origin)
+        
+        seeds = []
+        normals = []
+        
+        ## TODO check that streamlines always have 2 points
+        for coord1, coord2 in trk_streamlines.streamlines:
+            seeds.append(tuple(coord1))
+            normals.append(tuple(coord2 - coord1))
+        seeds = tuple(seeds)
+        normals = tuple(normals)
+        #print(seeds)
+    elif args.in_seed_list.endswith('.txt'):
+        seeds = tuple(map(tuple, loadtxt(args.in_seed_list)))
+    else:
+        parser.error('Seeds must be in .trk or .txt format.')
 
     if args.in_norm_list is not None:
         normals = tuple(map(tuple, loadtxt(args.in_norm_list)))
