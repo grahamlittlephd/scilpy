@@ -38,19 +38,18 @@ from dipy.reconst.dti import (TensorModel, color_fa, fractional_anisotropy,
                               radial_diffusivity, lower_triangular)
 # Aliased to avoid clashes with images called mode.
 from dipy.reconst.dti import mode as dipy_mode
+
 from scilpy.io.image import get_data_as_mask
 from scilpy.io.utils import (add_overwrite_arg, assert_inputs_exist,
                              assert_outputs_exist, add_force_b0_arg)
+from scilpy.reconst.dti import convert_tensor_from_dipy_format, \
+    supported_tensor_formats, tensor_format_description
 from scilpy.utils.bvec_bval_tools import (normalize_bvecs, is_normalized_bvecs,
                                           check_b0_threshold)
 from scilpy.utils.filenames import add_filename_suffix, split_name_with_nii
 
 logger = logging.getLogger("Compute_DTI_Metrics")
 logger.setLevel(logging.INFO)
-
-
-def _get_min_nonzero_signal(data):
-    return np.min(data[data > 0])
 
 
 def _build_arg_parser():
@@ -75,7 +74,8 @@ def _build_arg_parser():
         help='Tensor fit method.\nWLS for weighted least squares' +
              '\nLS for ordinary least squares' +
              '\nNLLS for non-linear least-squares' +
-             '\nrestore for RESTORE robust tensor fitting. (Default: %(default)s)')
+             '\nrestore for RESTORE robust tensor fitting. '
+             '(Default: %(default)s)')
     p.add_argument(
         '--not_all', action='store_true', dest='not_all',
         help='If set, will only save the metrics explicitly specified using '
@@ -114,6 +114,11 @@ def _build_arg_parser():
     g.add_argument(
         '--tensor', dest='tensor', metavar='file', default='',
         help='Output filename for the tensor coefficients.')
+    g.add_argument('--tensor_format', choices=supported_tensor_formats,
+                   default='fsl',
+                   help=("Format used for the tensors saved in --tensor file."
+                         "(default: %(default)s)\n"
+                         + tensor_format_description))
 
     g = p.add_argument_group(title='Quality control files flags')
     g.add_argument(
@@ -191,10 +196,10 @@ def main():
     if args.method == 'restore':
         sigma = ne.estimate_sigma(data)
         tenmodel = TensorModel(gtab, fit_method=args.method, sigma=sigma,
-                               min_signal=_get_min_nonzero_signal(data))
+                               min_signal=np.min(data[data > 0]))
     else:
         tenmodel = TensorModel(gtab, fit_method=args.method,
-                               min_signal=_get_min_nonzero_signal(data))
+                               min_signal=np.min(data[data > 0]))
 
     tenfit = tenmodel.fit(data, mask)
 
@@ -203,11 +208,12 @@ def main():
     FA = np.clip(FA, 0, 1)
 
     if args.tensor:
-        # Get the Tensor values and format them for visualisation
-        # in the Fibernavigator.
+        # Get the Tensor values
+        # Format them for visualization in various software.
         tensor_vals = lower_triangular(tenfit.quadratic_form)
-        correct_order = [0, 1, 3, 2, 4, 5]
-        tensor_vals_reordered = tensor_vals[..., correct_order]
+        tensor_vals_reordered = convert_tensor_from_dipy_format(
+            tensor_vals, final_format=args.tensor_format)
+
         fiber_tensors = nib.Nifti1Image(
             tensor_vals_reordered.astype(np.float32), affine)
         nib.save(fiber_tensors, args.tensor)
@@ -374,17 +380,24 @@ def main():
         if args.mask is None:
             logger.info("Outlier detection will not be performed, since no "
                         "mask was provided.")
-        stats = [dict.fromkeys(['label', 'mean', 'iqr', 'cilo', 'cihi', 'whishi',
-                                'whislo', 'fliers', 'q1', 'med', 'q3'], [])
-                 for i in range(data.shape[-1])]  # stats with format for boxplots
+
+        stats = [dict.fromkeys(['label', 'mean', 'iqr', 'cilo', 'cihi',
+                                'whishi', 'whislo', 'fliers', 'q1',
+                                'med', 'q3'], [])
+                 for i in range(data.shape[-1])]
         # Note that stats will be computed manually and plotted using bxp
         # but could be computed using stats = cbook.boxplot_stats
         # or pyplot.boxplot(x)
-        R_k = np.zeros(data.shape[-1], dtype=np.float32)    # mean residual per DWI
-        std = np.zeros(data.shape[-1], dtype=np.float32)  # std residual per DWI
-        q1 = np.zeros(data.shape[-1], dtype=np.float32)   # first quartile per DWI
-        q3 = np.zeros(data.shape[-1], dtype=np.float32)   # third quartile per DWI
-        iqr = np.zeros(data.shape[-1], dtype=np.float32)  # interquartile per DWI
+        # mean residual per DWI
+        R_k = np.zeros(data.shape[-1], dtype=np.float32)
+        # std residual per DWI
+        std = np.zeros(data.shape[-1], dtype=np.float32)
+        # first quartile per DWI
+        q1 = np.zeros(data.shape[-1], dtype=np.float32)
+        # third quartile per DWI
+        q3 = np.zeros(data.shape[-1], dtype=np.float32)
+        # interquartile per DWI
+        iqr = np.zeros(data.shape[-1], dtype=np.float32)
         percent_outliers = np.zeros(data.shape[-1], dtype=np.float32)
         nb_voxels = np.count_nonzero(mask)
         for k in range(data.shape[-1]):

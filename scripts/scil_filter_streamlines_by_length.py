@@ -12,7 +12,6 @@ import logging
 from dipy.io.streamline import save_tractogram
 import numpy as np
 
-from scilpy.tracking.tools import filter_streamlines_by_length
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import (add_json_args,
                              add_overwrite_arg,
@@ -20,6 +19,7 @@ from scilpy.io.utils import (add_json_args,
                              add_verbose_arg,
                              assert_inputs_exist,
                              assert_outputs_exist)
+from scilpy.tractograms.streamline_operations import filter_streamlines_by_length
 
 
 def _build_arg_parser():
@@ -56,7 +56,7 @@ def main():
     assert_outputs_exist(parser, args, args.out_tractogram)
 
     if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if args.minL == 0 and np.isinf(args.maxL):
         logging.debug("You have not specified minL nor maxL. Output will "

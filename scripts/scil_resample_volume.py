@@ -13,7 +13,7 @@ import nibabel as nib
 
 from scilpy.io.utils import (add_verbose_arg, add_overwrite_arg,
                              assert_inputs_exist, assert_outputs_exist)
-from scilpy.image.resample_volume import resample_volume
+from scilpy.image.volume_operations import resample_volume
 
 
 def _build_arg_parser():
@@ -67,7 +67,7 @@ def main():
         parser.error("Cannot enforce dimensions without a reference image")
 
     if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if args.volume_size and (not len(args.volume_size) == 1 and
                              not len(args.volume_size) == 3):

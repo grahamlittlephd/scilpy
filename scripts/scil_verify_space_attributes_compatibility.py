@@ -10,10 +10,11 @@ Spatial attributes are: affine, dimensions, voxel sizes and voxel order.
 
 import argparse
 
-from dipy.io.utils import is_header_compatible
 
-from scilpy.io.utils import assert_inputs_exist
-from scilpy.utils.filenames import split_name_with_nii
+from scilpy.io.utils import (
+    add_reference_arg,
+    assert_inputs_exist,
+    is_header_compatible_multiple_files)
 
 
 def _build_arg_parser():
@@ -21,8 +22,8 @@ def _build_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     p.add_argument('in_files', nargs='+',
-                   help='List of file to compare (trk and nii).')
-
+                   help='List of file to compare (trk, tck and nii/nii.gz).')
+    add_reference_arg(p)
     return p
 
 
@@ -31,19 +32,9 @@ def main():
     args = parser.parse_args()
 
     assert_inputs_exist(parser, args.in_files)
-
-    all_valid = True
-    for filepath in args.in_files:
-        _, in_extension = split_name_with_nii(filepath)
-        if in_extension not in ['.trk', '.nii', '.nii.gz']:
-            parser.error('{} does not have a supported extension'.format(
-                filepath))
-        if not is_header_compatible(args.in_files[0], filepath):
-            print('{} and {} do not have compatible header.'.format(
-                args.in_files[0], filepath))
-            all_valid = False
-    if all_valid:
-        print('All input files have compatible headers.')
+    is_header_compatible_multiple_files(parser, args.in_files,
+                                        verbose_all_compatible=True,
+                                        reference=args.reference)
 
 
 if __name__ == "__main__":

@@ -4,10 +4,10 @@
 """
 Compute a connectivity matrix from a tractogram and a parcellation.
 
-Current strategy is to keep the longest streamline segment connecting
-2 regions. If the streamline crosses other gray matter regions before
-reaching its final connected region, the kept connection is still the
-longest. This is robust to compressed streamlines.
+Current strategy is to keep the longest streamline segment connecting 2
+regions. If the streamline crosses other gray matter regions before reaching
+its final connected region, the kept connection is still the longest. This is
+robust to compressed streamlines.
 
 The output file is a hdf5 (.h5) where the keys are 'LABEL1_LABEL2' and each
 group is composed of 'data', 'offsets' and 'lengths' from the array_sequence.
@@ -16,9 +16,10 @@ The 'data' is stored in VOX/CORNER for simplicity and efficiency.
 For the --outlier_threshold option the default is a recommended good trade-off
 for a freesurfer parcellation. With smaller parcels (brainnetome, glasser) the
 threshold should most likely be reduced.
+
 Good candidate connections to QC are the brainstem to precentral gyrus
 connection and precentral left to precentral right connection, or equivalent
-in your parcellation."
+in your parcellation.
 
 NOTE: this script can take a while to run. Please be patient.
 Example: on a tractogram with 1.8M streamlines, running on a SSD:
@@ -44,20 +45,24 @@ import nibabel as nib
 from nibabel.streamlines.array_sequence import ArraySequence
 import numpy as np
 
-from scilpy.io.image import get_data_as_label
+from scilpy.image.labels import get_data_as_labels
 from scilpy.io.streamlines import load_tractogram_with_reference
-from scilpy.io.utils import (add_overwrite_arg,
+from scilpy.io.utils import (add_bbox_arg,
+                             add_overwrite_arg,
+                             add_processes_arg,
                              add_verbose_arg,
                              add_reference_arg,
                              assert_inputs_exist,
                              assert_outputs_exist,
-                             assert_output_dirs_exist_and_empty)
+                             assert_output_dirs_exist_and_empty,
+                             validate_nbr_processes)
 from scilpy.tractanalysis.features import (remove_outliers,
                                            remove_loops_and_sharp_turns)
 from scilpy.tractanalysis.tools import (compute_connectivity,
-                                        compute_streamline_segment,
                                         extract_longest_segments_from_profile)
-from scilpy.tractanalysis.uncompress import uncompress
+from scilpy.tractograms.uncompress import uncompress
+
+from scilpy.tractograms.streamline_operations import compute_streamline_segment
 
 
 def _get_output_paths(args):
@@ -160,8 +165,8 @@ def _build_arg_parser():
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter,
         description=__doc__)
-    p.add_argument('in_tractogram',
-                   help='Tractogram filename. Format must be one of \n'
+    p.add_argument('in_tractograms', nargs='+',
+                   help='Tractogram filenames. Format must be one of \n'
                         'trk, tck, vtk, fib, dpy.')
     p.add_argument('in_labels',
                    help='Labels file name (nifti). Labels must have 0 as '
@@ -223,8 +228,10 @@ def _build_arg_parser():
                         'Needed for scil_compute_connectivity.py and others.')
 
     add_reference_arg(p)
+    add_processes_arg(p)
     add_verbose_arg(p)
     add_overwrite_arg(p)
+    add_bbox_arg(p)
 
     return p
 
@@ -233,9 +240,10 @@ def main():
     parser = _build_arg_parser()
     args = parser.parse_args()
 
-    assert_inputs_exist(parser, [args.in_tractogram, args.in_labels],
+    assert_inputs_exist(parser, args.in_tractograms+[args.in_labels],
                         args.reference)
     assert_outputs_exist(parser, args, args.out_hdf5)
+    nbr_cpu = validate_nbr_processes(parser, args)
 
     # HDF5 will not overwrite the file
     if os.path.isfile(args.out_hdf5):
@@ -252,45 +260,46 @@ def main():
         assert_output_dirs_exist_and_empty(parser, args, args.out_dir,
                                            create_dir=True)
 
-    log_level = logging.WARNING
-    if args.verbose:
-        log_level = logging.INFO
-    logging.basicConfig(level=log_level)
+    log_level = logging.INFO if args.verbose else logging.WARNING
+    logging.getLogger().setLevel(log_level)
     coloredlogs.install(level=log_level)
     set_sft_logger_level('WARNING')
 
+    # Load everything
     img_labels = nib.load(args.in_labels)
-    data_labels = get_data_as_label(img_labels)
-    real_labels = np.unique(data_labels)[1:]
+    data_labels = get_data_as_labels(img_labels)
+    real_labels = np.unique(data_labels)[1:]   # Removing the background 0.
     if args.out_labels_list:
         np.savetxt(args.out_labels_list, real_labels, fmt='%i')
 
     # Voxel size must be isotropic, for speed/performance considerations
     vox_sizes = img_labels.header.get_zooms()
-    if not np.allclose(np.mean(vox_sizes), vox_sizes, atol=1e-03):
+    if not np.allclose(np.mean(vox_sizes), vox_sizes, atol=1e-01):
         parser.error('Labels must be isotropic')
 
     logging.info('*** Loading streamlines ***')
     time1 = time.time()
-    sft = load_tractogram_with_reference(parser, args, args.in_tractogram,
-                                         bbox_check=False)
-    sft.remove_invalid_streamlines()
+    sft = None
+    for in_tractogram in args.in_tractograms:
+        if sft is None:
+            sft = load_tractogram_with_reference(parser, args, in_tractogram)
+            if not is_header_compatible(sft, img_labels):
+                raise IOError('{} and {}do not have a compatible header'.format(
+                    in_tractogram, args.in_labels))
+        else:
+            sft += load_tractogram_with_reference(parser, args, in_tractogram)
+
     time2 = time.time()
     logging.info('    Loading {} streamlines took {} sec.'.format(
         len(sft), round(time2 - time1, 2)))
 
-    if not is_header_compatible(sft, img_labels):
-        raise IOError('{} and {}do not have a compatible header'.format(
-            args.in_tractogram, args.in_labels))
-
     sft.to_vox()
     sft.to_corner()
-    # Get all streamlines intersection indices
-    logging.info('*** Computing streamlines intersection ***')
+
+    # Get the indices of the voxels traversed by each streamline
+    logging.info('*** Computing voxels traversed by each streamline ***')
     time1 = time.time()
-
     indices, points_to_idx = uncompress(sft.streamlines, return_mapping=True)
-
     time2 = time.time()
     logging.info('    Streamlines intersection took {} sec.'.format(
         round(time2 - time1, 2)))
@@ -324,7 +333,7 @@ def main():
         hdf5_file.attrs['voxel_sizes'] = voxel_sizes
         hdf5_file.attrs['voxel_order'] = voxel_order
 
-        # Each connections is processed independently. Multiprocessing would be
+        # Each connection is processed independently. Multiprocessing would be
         # a burden on the I/O of most SSD/HD
         for in_label, out_label in comb_list:
             if iteration_counter > 0 and iteration_counter % 100 == 0:
@@ -399,7 +408,8 @@ def main():
 
             if not args.no_remove_loops:
                 no_loop_ids = remove_loops_and_sharp_turns(valid_length,
-                                                           args.loop_max_angle)
+                                                           args.loop_max_angle,
+                                                           num_processes=nbr_cpu)
                 loop_ids = np.setdiff1d(np.arange(len(valid_length)),
                                         no_loop_ids)
 
@@ -443,7 +453,8 @@ def main():
                     inliers,
                     args.loop_max_angle,
                     use_qb=True,
-                    qb_threshold=args.curv_qb_distance)
+                    qb_threshold=args.curv_qb_distance,
+                    num_processes=nbr_cpu)
                 qb_curv_ids = np.setdiff1d(np.arange(len(inliers)),
                                            no_qb_curv_ids)
 

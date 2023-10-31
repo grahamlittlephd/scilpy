@@ -4,12 +4,14 @@ pipeline {
     stages {
         stage('Build') {
             stages {
-                stage('Python3.7') {
+                stage('Python3.10') {
                     steps {
-                        withPythonEnv('CPython-3.7') {
+                        withPythonEnv('CPython-3.10') {
                             sh '''
-                                pip3 install numpy==1.20.* wheel
+                                pip3 install wheel==0.38.*
+                                pip3 install numpy==1.23.*
                                 pip3 install Cython==0.29.*
+                                pip3 install packaging==23.*
                                 pip3 install -e .
                             '''
                         }
@@ -20,9 +22,11 @@ pipeline {
 
         stage('Test') {
             steps {
-                withPythonEnv('CPython-3.7') {
+                withPythonEnv('CPython-3.10') {
                     sh '''
-                        pip3 install numpy==1.20.* wheel
+                        pip3 install wheel==0.38.*
+                        pip3 install numpy==1.23.*
+                        pip3 install packaging==23.*
                         pip3 install -e .
                         export MPLBACKEND="agg"
                         export OPENBLAS_NUM_THREADS=1
@@ -43,14 +47,13 @@ pipeline {
     }
     post {
         always {
-            cleanWs()
             script {
                 if (env.CHANGE_ID) {
                     if (pullRequest.createdBy != "arnaudbore"){
                         pullRequest.createReviewRequests(['arnaudbore'])
                     }
                     else{
-                        pullRequest.createReviewRequests(['GuillaumeTh'])
+                        pullRequest.createReviewRequests(['frheault'])
                     }
                 }
             }

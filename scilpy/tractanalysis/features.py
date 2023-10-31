@@ -2,18 +2,21 @@
 
 from itertools import count, takewhile
 import logging
+from multiprocessing import Pool
 
 from dipy.segment.clustering import QuickBundles, qbx_and_merge
-from dipy.segment.metric import ResampleFeature
+from dipy.segment.featurespeed import ResampleFeature
 from dipy.segment.metric import AveragePointwiseEuclideanMetric
 from dipy.tracking import metrics as tm
-from scilpy.tracking.tools import resample_streamlines_num_points
 import numpy as np
+
+from scilpy.tractograms.streamline_operations import \
+    resample_streamlines_num_points
 
 
 def detect_ushape(sft, minU, maxU):
     """
-    Extract streamlines depending of their "u-shapeness".
+    Extract streamlines depending on their "u-shapeness".
     Parameters
     ----------
     sft: Statefull tractogram
@@ -57,7 +60,8 @@ def remove_loops_and_sharp_turns(streamlines,
                                  max_angle,
                                  use_qb=False,
                                  qb_threshold=15.,
-                                 qb_seed=0):
+                                 qb_seed=0,
+                                 num_processes=1):
     """
     Remove loops and sharp turns from a list of streamlines.
     Parameters
@@ -75,6 +79,8 @@ def remove_loops_and_sharp_turns(streamlines,
         Quickbundles distance threshold, only used if use_qb is True.
     qb_seed: int
         Seed to initialize randomness in QuickBundles
+    num_processes : int
+        Split the calculation to a pool of children processes.
 
     Returns
     -------
@@ -84,10 +90,12 @@ def remove_loops_and_sharp_turns(streamlines,
 
     streamlines_clean = []
     ids = []
-    for i, s in enumerate(streamlines):
-        if tm.winding(s) < max_angle:
-            ids.append(i)
-            streamlines_clean.append(s)
+    pool = Pool(num_processes)
+
+    windings = pool.map(tm.winding, streamlines)
+    pool.close()
+    streamlines_clean = streamlines[np.array(windings) < max_angle]
+    ids = list(np.where(np.array(windings) < max_angle)[0])
 
     if use_qb:
         ids = []
@@ -247,12 +255,18 @@ def remove_outliers(streamlines, threshold, nb_points=12, nb_samplings=30,
                     fast_approx=False):
     """
     Wrapper to classify inliers and outliers from a list of streamlines.
+
     Parameters
     ----------
     streamlines: list of ndarray
         The list of streamlines from which inliers and outliers are separated.
     threshold: float
         Quickbundles distance threshold for the last threshold.
+    nb_points: int
+    nb_samplings: int
+    fast_approx: bool
+
+    Returns
     -------
     A tuple containing
         list: streamlines considered inliers

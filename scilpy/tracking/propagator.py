@@ -3,8 +3,10 @@ from enum import Enum
 from http.client import MOVED_PERMANENTLY
 import logging
 
-import dipy
 import numpy as np
+
+import dipy
+from dipy.io.stateful_tractogram import Space, Origin
 from dipy.reconst.shm import sh_to_sf_matrix
 
 from scilpy.reconst.utils import (get_sphere_neighbours,
@@ -29,22 +31,33 @@ class AbstractPropagator(object):
     a direction from it (ex, det, prob).
     """
 
-    def __init__(self, dataset, step_size, rk_order):
+    def __init__(self, datavolume, step_size, rk_order, space, origin):
         """
         Parameters
         ----------
-        dataset: scilpy.image.datasets.DataVolume
+        datavolume: scilpy.image.volume_space_management.DataVolume
             Trackable Dataset object.
         step_size: float
-            The step size for tracking.
+            The step size for tracking. Important: step size should be in the
+            same units as the space of the tracking!
         rk_order: int
             Order for the Runge Kutta integration.
-        """
-        self.dataset = dataset
+        space: dipy Space
+            Space of the streamlines during tracking.
+            value.
+        origin: dipy Origin
+            Origin of the streamlines during tracking. All coordinates received
+            in the propagator's methods will be expected to respect that origin.
 
-        # Everything scilpy.tracking is in 'corner', 'voxmm'
-        self.origin = 'corner'
-        self.space = 'voxmm'
+        A note on space and origin: All coordinates received in the
+        propagator's methods will be expected to respect those values.
+        Tracker will verify that the propagator has the same internal values as
+        itself.
+        """
+        self.datavolume = datavolume
+
+        self.origin = origin
+        self.space = space
 
         # Propagation options
         self.step_size = step_size
@@ -52,6 +65,9 @@ class AbstractPropagator(object):
             raise ValueError("Invalid runge-kutta order. Is " +
                              str(rk_order) + ". Choices : 1, 2, 4")
         self.rk_order = rk_order
+
+        # By default, normalizing directions. Adding option for child classes.
+        self.normalize_directions = True
 
     def reset_data(self, new_data=None):
         """
@@ -62,10 +78,10 @@ class AbstractPropagator(object):
         Params
         ------
         new_data: Any
-            Will replace self.dataset.data.
+            Will replace self.datavolume.data.
 
         """
-        self.dataset.data = new_data
+        self.datavolume.data = new_data
 
     def prepare_forward(self, seeding_pos):
         """
@@ -76,6 +92,8 @@ class AbstractPropagator(object):
         Parameters
         ----------
         seeding_pos: tuple(x,y,z)
+            The seeding position. Important, position must be in the same space
+            and origin as self.space, self.origin!
 
         Returns
         -------
@@ -107,7 +125,10 @@ class AbstractPropagator(object):
         """
         if len(line) > 1:
             v = line[-1] - line[-2]
-            return v / np.linalg.norm(v)
+            if self.normalize_directions:
+                return v / np.linalg.norm(v)
+            else:
+                return v
         elif forward_dir is not None:
             return [-dir_i for dir_i in forward_dir]
         else:
@@ -120,7 +141,8 @@ class AbstractPropagator(object):
         Parameters
         ----------
         last_pos: ndarray (3,)
-            Last propagated position.
+            Last propagated position. Important, position must be in the same
+            space and origin as self.space, self.origin!
         v_in: TrackingDirection
             Last propagated direction.
 
@@ -165,7 +187,8 @@ class AbstractPropagator(object):
         Return
         ------
         new_pos: ndarray (3,)
-            The new segment position.
+            The new segment position, expressed in propagator's space and
+            origin.
         new_dir: ndarray (3,) or TrackingDirection
             The new segment direction.
         is_direction_valid: bool
@@ -214,7 +237,8 @@ class AbstractPropagator(object):
         Parameters
         ----------
         pos: ndarray (3,)
-            Current tracking position.
+            Current tracking position.  Important, position must be in the same
+            space and origin as self.space, self.origin!
         v_in: ndarray (3,)
             Previous tracking direction.
 
@@ -228,12 +252,13 @@ class AbstractPropagator(object):
 
 
 class PropagatorOnSphere(AbstractPropagator):
-    def __init__(self, dataset, step_size, rk_order, dipy_sphere):
+    def __init__(self, datavolume, step_size, rk_order, dipy_sphere,
+                 space, origin):
         """
         Parameters
         ----------
-        dataset: scilpy.image.datasets.DataVolume
-            Trackable Dataset object.
+        datavolume: scilpy.image.volume_space_management.DataVolume
+            Trackable DataVolume object.
         step_size: float
             The step size for tracking.
         rk_order: int
@@ -241,16 +266,17 @@ class PropagatorOnSphere(AbstractPropagator):
         dipy_sphere: string, optional
             If necessary, name of the DIPY sphere object to use to evaluate
             directions.
+        space: dipy Space
+            Space of the streamlines during tracking.
+        origin: dipy Origin
+            Origin of the streamlines during tracking.
         """
-        super().__init__(dataset, step_size, rk_order)
+        super().__init__(datavolume, step_size, rk_order, space, origin)
 
         self.sphere = dipy.data.get_sphere(dipy_sphere)
         self.dirs = np.zeros(len(self.sphere.vertices), dtype=np.ndarray)
         for i in range(len(self.sphere.vertices)):
             self.dirs[i] = TrackingDirection(self.sphere.vertices[i], i)
-
-    def prepare_forward(self, seeding_pos):
-        raise NotImplementedError
 
     def prepare_backward(self, line, forward_dir):
         """
@@ -283,42 +309,23 @@ class PropagatorOnSphere(AbstractPropagator):
         #  exactly equal to last_dir or to backward_dir.
         return TrackingDirection(self.sphere.vertices[ind], ind)
 
-    def _sample_next_direction(self, pos, v_in):
-        """
-        Chooses a next tracking direction from all possible directions offered
-        by the tracking field.
-
-        Parameters
-        ----------
-        pos: ndarray (3,)
-            Current tracking position.
-        v_in: ndarray (3,)
-            Previous tracking direction.
-
-        Return
-        -------
-        direction: ndarray (3,)
-            A valid tracking direction. None if no valid direction is found.
-            Direction should be normalized.
-        """
-        raise NotImplementedError
-
 
 class ODFPropagator(PropagatorOnSphere):
     """
     Propagator on ODFs/fODFs. Algo can be det or prob.
     """
 
-    def __init__(self, dataset, step_size,
+    def __init__(self, datavolume, step_size,
                  rk_order, algo, basis, sf_threshold, sf_threshold_init,
                  theta, dipy_sphere='symmetric724',
-                 min_separation_angle=np.pi / 16.):
+                 min_separation_angle=np.pi / 16.,
+                 space=Space('vox'), origin=Origin('center')):
         """
 
         Parameters
         ----------
-        dataset: scilpy.image.datasets.DataVolume
-            Trackable Dataset object.
+        datavolume: scilpy.image.volume_space_management.DataVolume
+            Trackable DataVolume object.
         step_size: float
             The step size for tracking.
         rk_order: int
@@ -346,8 +353,23 @@ class ODFPropagator(PropagatorOnSphere):
             neighbourhood, where the neighbourhood includes all the sphere
             directions located at most `min_separation_angle` from the
             candidate direction.
+        space: dipy Space
+            Space of the streamlines during tracking. Default: VOX, like in
+            dipy. Interpolation of the ODF is done in VOX space (see
+            DataVolume.vox_to_value) so this choice implies the less data
+            modification.
+        origin: dipy Origin
+            Origin of the streamlines during tracking. Default: center, like in
+            dipy. Interpolation of the ODF is done in center origin so this
+            choice implies the less data modification.
         """
-        super().__init__(dataset, step_size, rk_order, dipy_sphere)
+        super().__init__(datavolume, step_size, rk_order, dipy_sphere,
+                         space, origin)
+
+        if self.space == Space.RASMM:
+            raise NotImplementedError(
+                "This version of the propagator on ODF is not ready to work "
+                "in RASMM space.")
 
         # Warn user if the rk order does not match the algo
         if rk_order != 1 and algo == 'prob':
@@ -370,7 +392,7 @@ class ODFPropagator(PropagatorOnSphere):
         self.sf_threshold = sf_threshold
         self.sf_threshold_init = sf_threshold_init
         sh_order, full_basis =\
-            get_sh_order_and_fullness(self.dataset.data.shape[-1])
+            get_sh_order_and_fullness(self.datavolume.data.shape[-1])
         self.basis = basis
         self.B = sh_to_sf_matrix(self.sphere, sh_order, self.basis,
                                  smooth=0.006, return_inv=False,
@@ -383,7 +405,8 @@ class ODFPropagator(PropagatorOnSphere):
         Parameters
         ----------
         pos: ndarray (3,)
-            Position in voxmm in the trackable dataset.
+            Position in the trackable dataset. Important, position should be
+            in the same space and origin as self.space, self.origin!
 
         Return
         ------
@@ -391,7 +414,9 @@ class ODFPropagator(PropagatorOnSphere):
             Spherical function evaluated at pos, normalized by
             its maximum amplitude.
         """
-        sh = self.dataset.voxmm_to_value(*pos, self.origin)
+        # Interpolation:
+        sh = self.datavolume.get_value_at_coordinate(
+            *pos, space=self.space, origin=self.origin)
         sf = np.dot(self.B.T, sh).reshape((-1, 1))
 
         sf_max = np.max(sf)
@@ -413,6 +438,8 @@ class ODFPropagator(PropagatorOnSphere):
         Parameters
         ----------
         seeding_pos: tuple(x,y,z)
+            The seeding position. Important, position must be in the same space
+            and origin as self.space, self.origin!
 
         Returns
         -------
@@ -445,7 +472,8 @@ class ODFPropagator(PropagatorOnSphere):
         Parameters
         ----------
         pos: ndarray (3,)
-            Current tracking position.
+            Current tracking position.  Important, position must be in the same
+            space and origin as self.space, self.origin!
         v_in: ndarray (3,)
             Previous tracking direction.
 
@@ -489,7 +517,8 @@ class ODFPropagator(PropagatorOnSphere):
         Parameters
         ----------
         pos: ndarray (3,)
-            Position in trackable dataset, expressed in mm.
+            Position in trackable dataset. Important, position must be in the
+            same space and origin as self.space, self.origin!
         v_in: TrackingDirection
             Incoming direction. Outcoming direction won't be further than an
             angle theta.
@@ -514,7 +543,8 @@ class ODFPropagator(PropagatorOnSphere):
         Parameters
         ----------
         pos: ndarray (3,)
-            Position in trackable dataset, expressed in mm.
+            Position in trackable dataset. Important, position must be in the
+            same space and origin as self.space, self.origin!
         previous_direction: TrackingDirection
             Incoming direction. Outcoming direction won't be further than an
             angle theta.

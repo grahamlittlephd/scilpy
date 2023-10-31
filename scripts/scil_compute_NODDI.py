@@ -22,7 +22,8 @@ from scilpy.io.utils import (add_overwrite_arg,
                              add_processes_arg,
                              add_verbose_arg,
                              assert_inputs_exist,
-                             assert_output_dirs_exist_and_empty)
+                             assert_output_dirs_exist_and_empty,
+                             redirect_stdout_c)
 from scilpy.utils.bvec_bval_tools import fsl2mrtrix, identify_shells
 
 EPILOG = """
@@ -83,15 +84,6 @@ def _build_arg_parser():
     return p
 
 
-def redirect_stdout_c():
-    sys.stdout.flush()
-    newstdout = os.dup(1)
-    devnull = os.open(os.devnull, os.O_WRONLY)
-    os.dup2(devnull, 1)
-    os.close(devnull)
-    sys.stdout = os.fdopen(newstdout, 'w')
-
-
 def main():
     parser = _build_arg_parser()
     args = parser.parse_args()
@@ -109,7 +101,7 @@ def main():
     # COMMIT has some c-level stdout and non-logging print that cannot
     # be easily stopped. Manual redirection of all printed output
     if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
         redirected_stdout = redirect_stdout(sys.stdout)
     else:
         f = io.StringIO()
@@ -168,11 +160,6 @@ def main():
             return
 
         ae.load_kernels()
-
-        # Set number of processes
-        solver_params = ae.get_config('solver_params')
-        solver_params['numThreads'] = args.nbr_processes
-        ae.set_config('solver_params', solver_params)
 
         # Model fit
         ae.fit()

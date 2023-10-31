@@ -31,9 +31,10 @@ from scilpy.io.image import get_data_as_mask
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import (add_overwrite_arg, add_verbose_arg,
                              assert_inputs_exist, assert_outputs_exist)
-from scilpy.tractanalysis.tools import (cut_outside_of_mask_streamlines,
-                                        cut_between_masks_streamlines)
-from scilpy.tracking.tools import resample_streamlines_step_size
+from scilpy.tractograms.streamline_and_mask_operations import \
+    cut_outside_of_mask_streamlines, cut_between_masks_streamlines
+from scilpy.tractograms.streamline_operations import \
+    resample_streamlines_step_size
 
 
 def _build_arg_parser():
@@ -64,7 +65,7 @@ def main():
     args = parser.parse_args()
 
     if args.verbose:
-        logging.basicConfig(level=logging.INFO)
+        logging.getLogger().setLevel(logging.INFO)
 
     assert_inputs_exist(parser, [args.in_tractogram, args.in_mask])
     assert_outputs_exist(parser, args, args.out_tractogram)
@@ -95,9 +96,11 @@ def main():
         new_sft = cut_between_masks_streamlines(sft, binary_mask)
 
     else:
-        logging.error('The provided mask has more than 2 entities. Cannot cut '
-                      'between >2.')
-        return
+        logging.warning('The provided mask has MORE THAN 2 entity '
+                        'cut_between_masks_streamlines function selected. '
+                        'This may cause problems with the outputed '
+                        'streamlines. Please inspect the output carefully.')
+        new_sft = cut_between_masks_streamlines(sft, binary_mask)
 
     if len(new_sft) == 0:
         logging.warning('No streamline intersected the provided mask. '

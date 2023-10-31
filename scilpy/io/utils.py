@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import json
 import logging
 import os
 import multiprocessing
 import re
 import shutil
+import sys
 import xml.etree.ElementTree as ET
 
+import nibabel as nib
 import numpy as np
 from dipy.data import SPHERE_FILES
 from dipy.io.utils import is_header_compatible
@@ -18,6 +21,7 @@ import six
 
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.utils.bvec_bval_tools import DEFAULT_B0_THRESHOLD
+from scilpy.utils.filenames import split_name_with_nii
 
 eddy_options = ["mb", "mb_offs", "slspec", "mporder", "s2v_lambda", "field",
                 "field_mat", "flm", "slm", "fwhm", "niter", "s2v_niter",
@@ -29,6 +33,39 @@ topup_options = ['out', 'fout', 'iout', 'logout', 'warpres', 'subsamp', 'fwhm',
                  'config', 'miter', 'lambda', 'ssqlambda', 'regmod', 'estmov',
                  "minmet", 'splineorder', 'numprec', 'interp', 'scale',
                  'regrid']
+
+axis_name_choices = ["axial", "coronal", "sagittal"]
+
+
+def get_acq_parameters(json_path, args_list):
+    """
+    Function to extract acquisition parameters from json file.
+
+    Parameters
+    ----------
+    json_path   Path to the json file
+    args_list   List of keys corresponding to parameters
+
+    Returns
+    ----------
+    Returns a list of values matching the list of keys.
+    """
+    with open(json_path) as f:
+        data = json.load(f)
+
+    acq_parameters = []
+    for parameter in args_list:
+        acq_parameters.append(data[parameter])
+    return acq_parameters
+
+
+def redirect_stdout_c():
+    sys.stdout.flush()
+    newstdout = os.dup(1)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 1)
+    os.close(devnull)
+    sys.stdout = os.fdopen(newstdout, 'w')
 
 
 def link_bundles_and_reference(parser, args, input_tractogram_list):
@@ -163,7 +200,7 @@ def add_reference_arg(parser, arg_name=None):
                                  'support (.nii or .nii.gz).')
 
 
-def add_sphere_arg(parser, symmetric_only=False, default='symmetric724'):
+def add_sphere_arg(parser, symmetric_only=False, default='repulsion724'):
     spheres = sorted(SPHERE_FILES.keys())
     if symmetric_only:
         spheres = [s for s in spheres if 'symmetric' in s]
@@ -173,7 +210,8 @@ def add_sphere_arg(parser, symmetric_only=False, default='symmetric724'):
 
     parser.add_argument('--sphere', choices=spheres,
                         default=default,
-                        help='Dipy sphere; set of possible directions.')
+                        help='Dipy sphere; set of possible directions.\n'
+                             'Default: [%(default)s]')
 
 
 def add_overwrite_arg(parser):
@@ -194,6 +232,15 @@ def add_verbose_arg(parser):
                         help='If set, produces verbose output.')
 
 
+def add_bbox_arg(parser):
+    parser.add_argument('--no_bbox_check', dest='bbox_check',
+                        action='store_false',
+                        help='Activate to ignore validity of the bounding '
+                             'box during loading / saving of \n'
+                             'tractograms (ignores the presence of invalid '
+                             'streamlines).')
+
+
 def add_sh_basis_args(parser, mandatory=False):
     """Add spherical harmonics (SH) bases argument.
 
@@ -206,8 +253,9 @@ def add_sh_basis_args(parser, mandatory=False):
     """
     choices = ['descoteaux07', 'tournier07']
     def_val = 'descoteaux07'
-    help_msg = 'Spherical harmonics basis used for the SH coefficients.\nMust ' +\
-               'be either \'descoteaux07\' or \'tournier07\' [%(default)s]:\n' +\
+    help_msg = 'Spherical harmonics basis used for the SH coefficients. ' +\
+               '\nMustbe either \'descoteaux07\' or \'tournier07\'' +\
+               ' [%(default)s]:\n' +\
                '    \'descoteaux07\': SH basis from the Descoteaux et al.\n' +\
                '                      MRM 2007 paper\n' +\
                '    \'tournier07\'  : SH basis from the Tournier et al.\n' +\
@@ -221,6 +269,88 @@ def add_sh_basis_args(parser, mandatory=False):
     parser.add_argument(arg_name,
                         choices=choices, default=def_val,
                         help=help_msg)
+
+
+def add_nifti_screenshot_default_args(
+    parser, slice_ids_mandatory=True, transparency_mask_mandatory=True
+):
+    _mask_prefix = "" if transparency_mask_mandatory else "--"
+
+    _slice_ids_prefix, _slice_ids_help = "", "Slice indices to screenshot."
+    _output_help = "Name of the output image (e.g. img.jpg, img.png)."
+    if not slice_ids_mandatory:
+        _slice_ids_prefix = "--"
+        _slice_ids_help += " If None are supplied, all slices inside " \
+                           "the transparency mask are selected."
+        _output_help = "Name of the output image(s). If multiple slices are " \
+                       "provided (or none), their index will be append to " \
+            "the name (e.g. volume.jpg, volume.png becomes " \
+            "volume_slice_0.jpg, volume_slice_0.png)."
+
+    # Positional arguments
+    parser.add_argument(
+        "in_volume", help="Input 3D Nifti file (.nii/.nii.gz).")
+    parser.add_argument("out_fname", help=_output_help)
+
+    # Variable arguments
+    parser.add_argument(
+        f"{_mask_prefix}in_transparency_mask",
+        help="Transparency mask 3D Nifti image (.nii/.nii.gz).")
+    parser.add_argument(
+        f"{_slice_ids_prefix}slice_ids", nargs="+", type=int,
+        help=_slice_ids_help)
+
+    # Optional arguments
+    parser.add_argument(
+        "--volume_cmap_name", default=None,
+        help="Colormap name for the volume image data. [%(default)s]")
+    parser.add_argument(
+        "--axis_name", default="axial", type=str, choices=axis_name_choices,
+        help="Name of the axis to visualize. [%(default)s]")
+    parser.add_argument(
+        "--win_dims", nargs=2, metavar=("WIDTH", "HEIGHT"), default=(768, 768),
+        type=int, help="The dimensions for the vtk window. [%(default)s]")
+    parser.add_argument(
+        "--display_slice_number", action="store_true",
+        help="If true, displays the slice number in the upper left corner."
+    )
+    parser.add_argument(
+        "--display_lr", action="store_true",
+        help="If true, add left and right annotations to the images."
+    )
+
+
+def add_nifti_screenshot_overlays_args(
+    parser, labelmap_overlay=True, mask_overlay=True,
+    transparency_is_overlay=False
+):
+    if labelmap_overlay:
+        parser.add_argument(
+            "--in_labelmap",  help="Labelmap 3D Nifti image (.nii/.nii.gz).")
+        parser.add_argument(
+            "--labelmap_cmap_name", default="viridis",
+            help="Colormap name for the labelmap image data. [%(default)s]")
+        parser.add_argument(
+            "--labelmap_alpha", type=ranged_type(float, 0., 1.), default=0.7,
+            help="Opacity value for the labelmap overlay. [%(default)s].")
+
+    if mask_overlay:
+        if not transparency_is_overlay:
+            parser.add_argument(
+                "--in_masks", nargs="+",
+                help="Mask 3D Nifti image (.nii/.nii.gz).")
+
+        parser.add_argument(
+            "--masks_colors", nargs="+", metavar="R G B",
+            type=ranged_type(int, 0, 255), default=None,
+            help="Colors for the mask overlay or contour")
+        parser.add_argument(
+            "--masks_as_contours", action='store_true',
+            help="Create contours from masks instead "
+                 "of overlays. [%(default)s].")
+        parser.add_argument(
+            "--masks_alpha", type=ranged_type(float, 0., 1.), default=0.7,
+            help="Opacity value for the masks overlays. [%(default)s].")
 
 
 def validate_nbr_processes(parser, args):
@@ -421,6 +551,45 @@ def assert_output_dirs_exist_and_empty(parser, args, required,
             check(opt_dir)
 
 
+def assert_overlay_colors(colors, overlays, parser):
+    if colors is None:
+        return
+
+    if len(colors) % 3 != 0:
+        parser.error(
+            "Masks colors must be tuples of 3 ints in the range [0, 255]")
+
+    if len(colors) > 3 and len(colors) // 3 != len(overlays):
+        parser.error(f"Bad number of colors supplied for overlays "
+                     f"({len(overlays)}). Either provide no color, a "
+                     f"single mask color or as many colors as there is masks")
+
+
+def assert_roi_radii_format(parser):
+    """
+    Verifies the format of the inputed roi radii.
+
+    Parameters
+    ----------
+    parser: argument parser
+        Will raise an error if the --roi_radii format is wrong.
+
+    Returns
+    -------
+    roi_radii: int or numpy array
+        Roi radii as a scalar or an array of size (3,).
+    """
+    args = parser.parse_args()
+    if len(args.roi_radii) == 1:
+        roi_radii = args.roi_radii[0]
+    elif len(args.roi_radii) == 3:
+        roi_radii = args.roi_radii
+    else:
+        parser.error('Wrong size for --roi_radii, can only be a scalar' +
+                     'or an array of size (3,)')
+    return roi_radii
+
+
 def verify_compatibility_with_reference_sft(ref_sft, files_to_verify,
                                             parser, args):
     """
@@ -436,7 +605,8 @@ def verify_compatibility_with_reference_sft(ref_sft, files_to_verify,
     parser: argument parser
         Will raise an error if a file is not compatible.
     args: Namespace
-        Should contain a args.reference if any file is a .tck.
+        Should contain a args.reference if any file is a .tck, and possibly a
+        args.bbox_check (set to True by default).
     """
     save_ref = args.reference
 
@@ -451,14 +621,63 @@ def verify_compatibility_with_reference_sft(ref_sft, files_to_verify,
                     args.reference = None
                 else:
                     args.reference = save_ref
-                mask = load_tractogram_with_reference(parser, args, file,
-                                                      bbox_check=False)
+                mask = load_tractogram_with_reference(parser, args, file)
             else:  # should be a nifti file.
                 mask = file
             compatible = is_header_compatible(ref_sft, mask)
             if not compatible:
                 parser.error("Reference tractogram incompatible with {}"
                              .format(file))
+
+
+def is_header_compatible_multiple_files(parser, list_files,
+                                        verbose_all_compatible=False,
+                                        reference=None):
+    """
+    Verifies the compatibility between the first item in list_files
+    and the remaining files in list.
+
+    Arguments
+    ---------
+    parser: argument parser
+        Will raise an error if a file is not compatible.
+    list_files: List[str]
+        List of files to test
+    verbose_all_compatible: bool
+        If true will print a message when everything is okay
+    reference: str
+        Reference for any .tck passed in `list_files`
+    """
+    all_valid = True
+
+    # Gather "headers" for all files to compare against
+    # eachother later
+    headers = []
+    for filepath in list_files:
+        _, in_extension = split_name_with_nii(filepath)
+        if in_extension in ['.trk', '.nii', '.nii.gz']:
+            headers.append(filepath)
+        elif in_extension == '.tck':
+            if reference:
+                headers.append(reference)
+            else:
+                parser.error(
+                    '{} must be provided with a reference.'.format(
+                        filepath))
+        else:
+            parser.error('{} does not have a supported extension.'.format(
+                filepath))
+
+    for curr in headers[1:]:
+        if not is_header_compatible(headers[0], curr):
+            print('ERROR:\"{}\" and \"{}\" do not have compatible '
+                  'headers.'.format(headers[0], curr))
+            all_valid = False
+
+    if all_valid and verbose_all_compatible:
+        print('All input files have compatible headers.')
+    elif not all_valid:
+        parser.error('Not all input files have compatible headers.')
 
 
 def read_info_from_mb_bdo(filename):
@@ -470,7 +689,7 @@ def read_info_from_mb_bdo(filename):
     center = [flip[0]*float(center_tag.attrib['x'].replace(',', '.')),
               flip[1]*float(center_tag.attrib['y'].replace(',', '.')),
               flip[2]*float(center_tag.attrib['z'].replace(',', '.'))]
-    row_list = tree.getiterator('Row')
+    row_list = tree.iter('Row')
     radius = [None, None, None]
     for i, row in enumerate(row_list):
         for j in range(0, 3):
@@ -500,9 +719,12 @@ def load_matrix_in_any_format(filepath):
         # antsRegistration that encode a 4x4 transformation matrix.
         transfo_dict = loadmat(filepath)
         lps2ras = np.diag([-1, -1, 1])
+        transfo_key = 'AffineTransform_double_3_3'
+        if transfo_key not in transfo_dict:
+            transfo_key = 'AffineTransform_float_3_3'
 
-        rot = transfo_dict['AffineTransform_double_3_3'][0:9].reshape((3, 3))
-        trans = transfo_dict['AffineTransform_double_3_3'][9:12]
+        rot = transfo_dict[transfo_key][0:9].reshape((3, 3))
+        trans = transfo_dict[transfo_key][9:12]
         offset = transfo_dict['fixed']
         r_trans = (np.dot(rot, offset) - offset - trans).T * [1, 1, -1]
 
@@ -586,3 +808,71 @@ def snapshot(scene, filename, **kwargs):
     out = window.snapshot(scene, **kwargs)
     image = Image.fromarray(out[::-1])
     image.save(filename)
+
+
+def ranged_type(value_type, min_value, max_value):
+    """Return a function handle of an argument type function for ArgumentParser
+    checking a range: `min_value` <= arg <= `max_value`.
+
+    Parameters
+    ----------
+    value_type : Type
+        Value-type to convert the argument.
+    min_value : scalar
+        Minimum acceptable argument value.
+    max_value : scalar
+       Maximum acceptable argument value.
+
+    Returns
+    -------
+    Function handle of an argument type function for ArgumentParser.
+
+    Usage
+    -----
+        ranged_type(float, 0.0, 1.0)
+    """
+
+    def range_checker(arg: str):
+        try:
+            f = value_type(arg)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"must be a valid {value_type}")
+        if f < min_value or f > max_value:
+            raise argparse.ArgumentTypeError(
+                f"must be within [{min_value}, {max_value}]")
+        return f
+
+    # Return handle to checking function
+    return range_checker
+
+
+def get_default_screenshotting_data(args):
+
+    volume_img = nib.load(args.in_volume)
+
+    transparency_mask_img = None
+    if args.in_transparency_mask:
+        transparency_mask_img = nib.load(args.in_transparency_mask)
+
+    labelmap_img = None
+    if args.in_labelmap:
+        labelmap_img = nib.load(args.in_labelmap)
+
+    mask_imgs, masks_colors = None, None
+    if args.in_masks:
+        mask_imgs = [nib.load(f) for f in args.in_masks]
+
+        if args.masks_colors is not None:
+            if len(args.masks_colors) == 3:
+                masks_colors = np.repeat(
+                    [args.masks_colors], len(args.in_masks), axis=0)
+            elif len(args.masks_colors) // 3 == len(args.in_masks):
+                masks_colors = np.array(args.masks_colors).reshape((-1, 3))
+
+            masks_colors = masks_colors / 255.
+
+    return volume_img, \
+        transparency_mask_img, \
+        labelmap_img, \
+        mask_imgs, \
+        masks_colors

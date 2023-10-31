@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+import logging
 import inspect
 import os
 import scilpy
@@ -29,6 +30,10 @@ class CLManager(object):
             raise RuntimeError('pyopencl is not installed. '
                                'Cannot create CLManager instance.')
 
+        # Reduce verbose level for pyopencl
+        logging.getLogger('pytools.persistent_dict').setLevel(logging.CRITICAL)
+        logging.getLogger('pyopencl').setLevel(logging.CRITICAL)
+
         self.input_buffers = [0] * n_inputs
         self.output_buffers = [0] * n_outputs
 
@@ -39,9 +44,6 @@ class CLManager(object):
             devices = p.get_devices()
             for d in devices:
                 if best_device is None:
-                    best_device = d
-                elif (d.info.IMAGE_MAX_BUFFER_SIZE >
-                      best_device.info.IMAGE_MAX_BUFFER_SIZE):
                     best_device = d
 
         self.context = cl.Context(devices=[best_device])

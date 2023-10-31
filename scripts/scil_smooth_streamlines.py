@@ -35,7 +35,8 @@ from scilpy.io.utils import (add_overwrite_arg, add_reference_arg,
                              add_verbose_arg,
                              assert_inputs_exist,
                              assert_outputs_exist)
-from scilpy.tracking.tools import smooth_line_gaussian, smooth_line_spline
+from scilpy.tractograms.streamline_operations import smooth_line_gaussian, \
+    smooth_line_spline
 
 
 def _build_arg_parser():
@@ -78,10 +79,8 @@ def main():
     assert_inputs_exist(parser, args.in_tractogram)
     assert_outputs_exist(parser, args, args.out_tractogram)
 
-    log_level = logging.WARNING
-    if args.verbose:
-        log_level = logging.DEBUG
-    logging.basicConfig(level=log_level)
+    log_level = logging.INFO if args.verbose else logging.WARNING
+    logging.getLogger().setLevel(log_level)
 
     sft = load_tractogram_with_reference(parser, args, args.in_tractogram)
     smoothed_streamlines = []

@@ -6,8 +6,8 @@ from enum import Enum
 import numpy as np
 
 from scilpy.image.utils import volume_iterator
-from scilpy.gradientsampling.save_gradient_sampling import (save_gradient_sampling_fsl,
-                                                            save_gradient_sampling_mrtrix)
+from scilpy.io.gradient_table import (save_gradient_sampling_fsl,
+                                      save_gradient_sampling_mrtrix)
 
 DEFAULT_B0_THRESHOLD = 20
 
@@ -498,7 +498,7 @@ def swap_fsl_gradient_axis(bvecs_filename, bvecs_swapped_filename, axes):
     """
 
     bvecs = np.loadtxt(bvecs_filename)
-    new_bvecs = np.zeros(bvecs.shape)
+    new_bvecs = np.copy(bvecs)
     new_bvecs[axes[0], :] = bvecs[axes[1], :]
     new_bvecs[axes[1], :] = bvecs[axes[0], :]
 
@@ -520,7 +520,7 @@ def swap_mrtrix_gradient_axis(bvecs_filename, bvecs_swapped_filename, axes):
     """
 
     bvecs = np.loadtxt(bvecs_filename)
-    new_bvecs = np.zeros(bvecs.shape)
+    new_bvecs = np.copy(bvecs)
 
     new_bvecs[:, axes[0]] = bvecs[:, axes[1]]
     new_bvecs[:, axes[1]] = bvecs[:, axes[0]]
