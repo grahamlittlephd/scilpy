@@ -51,7 +51,7 @@ import numpy as np
 from dipy.io.stateful_tractogram import StatefulTractogram, Space, \
                                         set_sft_logger_level
 from dipy.io.stateful_tractogram import Origin
-from dipy.io.streamline import save_tractogram
+from dipy.io.streamline import save_tractogram, load_trk
 from nibabel.streamlines import detect_format, TrkFile
 
 from scilpy.io.image import assert_same_resolution
@@ -61,7 +61,7 @@ from scilpy.io.utils import (add_processes_arg, add_sphere_arg,
                              verify_compression_th)
 from scilpy.image.volume_space_management import DataVolume
 from scilpy.tracking.propagator import ODFPropagator
-from scilpy.tracking.seed import SeedGenerator
+from scilpy.tracking.seed import SeedGenerator, SeedGeneratorExplicit
 from scilpy.tracking.tools import get_theta
 from scilpy.tracking.tracker import Tracker
 from scilpy.tracking.utils import (add_mandatory_options_tracking,
@@ -77,6 +77,12 @@ def _build_arg_parser():
         description=__doc__)
 
     add_mandatory_options_tracking(p)
+
+    # Pass a trk file for explicit seeds (will override seeding mask)
+    p.add_argument('--in_seed_explicit', metavar='TRK', type=str,
+                   help='Tractogram file containing the seeds. \n'
+                        'Will override seeding mask and use the first'
+                        'egment from each streamline as a seed')
 
     track_g = add_tracking_options(p)
     track_g.add_argument('--algo', default='prob',
@@ -185,16 +191,55 @@ def main():
     our_origin = Origin('center')
 
     # Preparing everything
-    logging.debug("Loading seeding mask.")
-    seed_img = nib.load(args.in_seed)
-    seed_data = seed_img.get_fdata(caching='unchanged', dtype=float)
-    if np.count_nonzero(seed_data) == 0:
-        raise IOError('The image {} is empty. '
+    if args.in_seed_explicit:
+        if args.in_seed_explicit.endswith('.trk'):
+            logging.debug("Loading explicitly identified seeds.")
+            trk_streamlines = load_trk(args.in_seed_explicit, 'same')
+            
+            # Tracking is done in voxmm/corner 
+            trk_streamlines.to_voxmm()
+            trk_streamlines.to_corner()
+        
+            seeds = []
+            seed_directions = []
+        
+            # If streamlines contain more than one point use 
+            # first two points to get seeding direction
+            pnt_num = len(trk_streamlines.streamlines[0])
+            if pnt_num > 1:
+                for coord1, coord2 in trk_streamlines.streamlines:
+                    seeds.append(tuple(coord1))
+                    seed_directions.append(tuple(coord2 - coord1))
+                    seeds = tuple(seeds)
+                    seed_directions = tuple(seed_directions)
+                    seed_generator = SeedGeneratorExplicit(seeds,
+                                                   dir_list=seed_directions,
+                                                   space=our_space,
+                                                   origin=our_origin)
+            
+            # If only single point streamlines use first point as seed
+            elif pnt_num == 1:
+                for coord1 in trk_streamlines.streamlines:
+                    seeds.append(tuple(coord1))
+                    seed_generator = SeedGeneratorExplicit(seeds,
+                                                   space=our_space,
+                                                   origin=our_origin)
+            else:
+                raise ValueError('Streamlines must contain at least one point')
+        else:
+            raise ValueError('Seeds must be a .trk file')
+    else:
+        nbr_seeds = seed_generator.nbr_seeds
+        logging.debug("Loading seeding mask.")
+        seed_img = nib.load(args.in_seed)
+        seed_data = seed_img.get_fdata(caching='unchanged', dtype=float)
+        if np.count_nonzero(seed_data) == 0:
+            raise IOError('The image {} is empty. '
                       'It can\'t be loaded as '
                       'seeding mask.'.format(args.in_seed))
 
-    seed_res = seed_img.header.get_zooms()[:3]
-    seed_generator = SeedGenerator(seed_data, seed_res,
+        seed_res = seed_img.header.get_zooms()[:3]
+        seed_generator = SeedGenerator(seed_data, seed_res,
                                    space=our_space, origin=our_origin)
     if args.npv:
         # toDo. This will not really produce n seeds per voxel, only true

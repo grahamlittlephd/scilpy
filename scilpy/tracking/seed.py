@@ -206,7 +206,8 @@ class SeedGeneratorExplicit(object):
 
     Generated seeds from a list of positions. In voxel space (e.g origin = corner).
     """
-    def __init__(self, seed_list, dir_list=None):
+    def __init__(self, seed_list, dir_list=None,
+                 space=Space('vox'), origin=Origin('center')):
         """
         Parameters
         ----------
