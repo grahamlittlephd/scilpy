@@ -421,7 +421,7 @@ class ODFPropagator(PropagatorOnSphere):
             sf /= sf_max
         return sf
 
-    def prepare_forward(self, seeding_pos):
+    def prepare_forward(self, seeding_pos, seeding_dir=None):
         """
         Prepare information necessary at the first point of the
         streamline for forward propagation: v_in and any other information
@@ -450,12 +450,16 @@ class ODFPropagator(PropagatorOnSphere):
         # with a different threshold than usual (sf_threshold_init).
         # So the initial step's propagation will be in a cone theta around a
         # "more probable" peak.
-        sf = self._get_sf(seeding_pos)
-        sf[sf < self.sf_threshold_init] = 0
+        if seeding_dir is not None:
+            sf = self._get_sf(seeding_pos)
+            sf[sf < self.sf_threshold_init] = 0
 
-        if np.sum(sf) > 0:
-            ind = sample_distribution(sf)
-            return TrackingDirection(self.dirs[ind], ind)
+            if np.sum(sf) > 0:
+                ind = sample_distribution(sf)
+                return TrackingDirection(self.dirs[ind], ind)
+        else: # explicitly set seeding direction
+            ind = self.sphere.find_closest(seeding_dir)
+            return TrackingDirection(seeding_dir / np.linalg.norm(seeding_dir), ind)
 
         # Else: sf at current position is smaller than acceptable threshold in
         # all directions.
