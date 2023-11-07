@@ -326,11 +326,17 @@ class Tracker(object):
                          leave=False)
 
         for s in range(chunk_size):
-            seed = self.seed_generator.get_next_pos(
-                random_generator, indices, first_seed_of_chunk + s)
-
+            # if self has directions use them
+            seed_dir = None
+            if hasattr(self.seed_generator, 'seed_dirs'):
+                seed, seed_dir = self.seed_generator.get_next_pos_and_norm(
+                     random_generator, indices, first_seed_of_chunk + s)
+            else:
+                seed = self.seed_generator.get_next_pos(
+                    random_generator, indices, first_seed_of_chunk + s)
+            
             # Forward and backward tracking
-            line = self._get_line_both_directions(seed)
+            line = self._get_line_both_directions(seed, seed_dir=seed_dir)
 
             if line is not None:
                 streamline = np.array(line, dtype='float32')
@@ -360,7 +366,7 @@ class Tracker(object):
                 p.close()
         return streamlines, seeds
 
-    def _get_line_both_directions(self, seeding_pos):
+    def _get_line_both_directions(self, seeding_pos, seeding_dir=None):
         """
         Generate a streamline from an initial position following the tracking
         parameters.
@@ -384,7 +390,12 @@ class Tracker(object):
 
         # Forward
         line = [np.asarray(seeding_pos)]
-        tracking_info = self.propagator.prepare_forward(seeding_pos)
+        if seeding_dir is not None:
+            tracking_info = self.propagator.prepare_forward(seeding_pos,
+                                                            seeding_dir)
+        else:
+            tracking_info = self.propagator.prepare_forward(seeding_pos)
+        
         if tracking_info == PropagationStatus.ERROR:
             # No good tracking direction can be found at seeding position.
             return None
