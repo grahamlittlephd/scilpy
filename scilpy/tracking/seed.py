@@ -199,14 +199,14 @@ class SeedGenerator(object):
 
         return random_generator, indices
 
-# Added Explicit Seed generator for use with mesh based tracking
+# Added Explicit Seed generator to allow seeding in specific location/direction
 class SeedGeneratorExplicit(object):
     """
     Class to get seeding positions.
 
     Generated seeds from a list of positions. In voxel space (e.g origin = corner).
     """
-    def __init__(self, seed_list, norm_list=None):
+    def __init__(self, seed_list, dir_list=None):
         """
         Parameters
         ----------
@@ -227,10 +227,10 @@ class SeedGeneratorExplicit(object):
         if len(self.seeds) == 0:
             logging.warning("No seeds provided!")
 
-        self.norms = norm_list        
-        if norm_list is not None:
-            if len(self.norms) != len(self.seeds):
-                logging.warning("Seed and normals must be of the same length!")
+        self.seed_dirs = dir_list        
+        if dir_list is not None:
+            if len(self.seed_dirs) != len(self.seeds):
+                logging.warning("Seed and seed directions must be of the same length!")
 
     def get_next_pos(self, random_generator, indices, which_seed):
         """
@@ -261,7 +261,7 @@ class SeedGeneratorExplicit(object):
 
         return self.seeds[indices[ind]]
 
-    def get_next_pos_and_norm(self, random_generator, indices, which_seed):
+    def get_next_pos_and_direction(self, random_generator, indices, which_seed):
         """
         Generate the next seed position (Space=voxmm, origin=corner).
 
@@ -288,12 +288,12 @@ class SeedGeneratorExplicit(object):
         # seed selection from explicit coordinate list
         ind = which_seed % len_seeds
 
-        if self.norms:
-            thisNorm = self.norms[indices[ind]]
+        if self.seed_dirs:
+            seed_dir = self.seed_dirs[indices[ind]]
         else:
-            thisNorm = None
+            seed_dir = None
 
-        return self.seeds[indices[ind]], thisNorm
+        return self.seeds[indices[ind]], seed_dir
 
     # Kept the init generator for now even though it is not used.
     # Specifically so first seed functionality can be used
