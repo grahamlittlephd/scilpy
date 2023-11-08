@@ -230,8 +230,6 @@ def main():
                     seed_generator = SeedGeneratorExplicit(seeds,
                                                    space=our_space,
                                                    origin=our_origin)
-            else:
-                raise ValueError('Streamlines must contain at least one point')
         else:
             raise ValueError('Seeds must be a .trk file')
     else:
