@@ -79,10 +79,16 @@ def _build_arg_parser():
     add_mandatory_options_tracking(p)
 
     # Pass a trk file for explicit seeds (will override seeding mask)
-    p.add_argument('--in_seed_explicit', metavar='TRK', type=str,
-                   help='Tractogram file containing the seeds. \n'
-                        'Will override seeding mask and use the first'
-                        'egment from each streamline as a seed')
+    p.add_argument('--in_seed_explicit', type=str,
+                   help='Tractogram containing the seeds and \n' 
+                        'directions to use (must be .trk). \n'
+                        'Will override seeding mask and use the \n'
+                        'first pnt from each streamline as the seed \n'
+                        'for each streamline')
+    
+    p.add_argument('--use_seed_dirs', type=bool, default=True,
+                   help='Use the first segment from each streamline in trk \n' 
+                        'to set seeding direction')
 
     track_g = add_tracking_options(p)
     track_g.add_argument('--algo', default='prob',
@@ -203,22 +209,22 @@ def main():
             seeds = []
             seed_directions = []
         
-            # If streamlines contain more than one point use 
-            # first two points to get seeding direction
-            pnt_num = len(trk_streamlines.streamlines[0])
-            if pnt_num > 1:
-                for coord1, coord2 in trk_streamlines.streamlines:
-                    seeds.append(tuple(coord1))
-                    seed_directions.append(tuple(coord2 - coord1))
-                    seeds = tuple(seeds)
-                    seed_directions = tuple(seed_directions)
-                    seed_generator = SeedGeneratorExplicit(seeds,
+            # If using directions from trk use the first segment of each streamline
+            if args.use_seed_dirs:
+                pnt_num = len(trk_streamlines.streamlines[0])
+                if pnt_num > 1:
+                    for coord1, coord2 in trk_streamlines.streamlines:
+                        seeds.append(tuple(coord1))
+                        seed_directions.append(tuple(coord2 - coord1))
+                        seeds = tuple(seeds)
+                        seed_directions = tuple(seed_directions)
+                        seed_generator = SeedGeneratorExplicit(seeds,
                                                    dir_list=seed_directions,
                                                    space=our_space,
                                                    origin=our_origin)
-            
-            # If only single point streamlines use first point as seed
-            elif pnt_num == 1:
+                else:
+                    raise ValueError('Streamlines must contain at least two points to use_seed_dirs')
+            else:
                 for coord1 in trk_streamlines.streamlines:
                     seeds.append(tuple(coord1))
                     seed_generator = SeedGeneratorExplicit(seeds,
