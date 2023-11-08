@@ -78,18 +78,6 @@ def _build_arg_parser():
 
     add_mandatory_options_tracking(p)
 
-    # Pass a trk file for explicit seeds (will override seeding mask)
-    p.add_argument('--in_seed_explicit', type=str,
-                   help='Tractogram containing the seeds and \n' 
-                        'directions to use (must be .trk). \n'
-                        'Will override seeding mask and use the \n'
-                        'first pnt from each streamline as the seed \n'
-                        'for each streamline')
-    
-    p.add_argument('--use_seed_dirs', type=bool, default=True,
-                   help='Use the first segment from each streamline in trk \n' 
-                        'to set seeding direction')
-
     track_g = add_tracking_options(p)
     track_g.add_argument('--algo', default='prob',
                          choices=['det', 'prob'],
@@ -146,6 +134,18 @@ def _build_arg_parser():
                           "fixed --rng_seed.\nEx: If tractogram_1 was created "
                           "with -nt 1,000,000, \nyou can create tractogram_2 "
                           "with \n--skip 1,000,000.")
+
+    s_g = p.add_argument_group('Explicit seeding options')
+    s_g.add_argument('--in_seed_explicit', type=str,
+                   help='Tractogram containing the seeds and \n' 
+                        'directions to use (must be .trk). \n'
+                        'Will override seeding mask and use the \n'
+                        'first pnt from each streamline as the seed \n'
+                        'for each streamline')
+    
+    s_g.add_argument('--use_seed_dirs', action='store_true',
+                   help='uses the first segment from each streamline in trk \n' 
+                        'to set seeding direction [%(default)s]')
 
     m_g = p.add_argument_group('Memory options')
     add_processes_arg(m_g)
@@ -216,9 +216,9 @@ def main():
                     for coord1, coord2 in trk_streamlines.streamlines:
                         seeds.append(tuple(coord1))
                         seed_directions.append(tuple(coord2 - coord1))
-                        seeds = tuple(seeds)
-                        seed_directions = tuple(seed_directions)
-                        seed_generator = SeedGeneratorExplicit(seeds,
+                    seeds = tuple(seeds)
+                    seed_directions = tuple(seed_directions)
+                    seed_generator = SeedGeneratorExplicit(seeds,
                                                    dir_list=seed_directions,
                                                    space=our_space,
                                                    origin=our_origin)
@@ -230,10 +230,10 @@ def main():
                     seed_generator = SeedGeneratorExplicit(seeds,
                                                    space=our_space,
                                                    origin=our_origin)
+            nbr_seeds = len(seeds)
         else:
             raise ValueError('Seeds must be a .trk file')
     else:
-        nbr_seeds = seed_generator.nbr_seeds
         logging.debug("Loading seeding mask.")
         seed_img = nib.load(args.in_seed)
         seed_data = seed_img.get_fdata(caching='unchanged', dtype=float)
@@ -245,17 +245,19 @@ def main():
         seed_res = seed_img.header.get_zooms()[:3]
         seed_generator = SeedGenerator(seed_data, seed_res,
                                    space=our_space, origin=our_origin)
-    if args.npv:
-        # toDo. This will not really produce n seeds per voxel, only true
-        #  in average.
-        nbr_seeds = len(seed_generator.seeds_vox) * args.npv
-    elif args.nt:
-        nbr_seeds = args.nt
-    else:
-        # Setting npv = 1.
-        nbr_seeds = len(seed_generator.seeds_vox)
-    if len(seed_generator.seeds_vox) == 0:
-        parser.error('Seed mask "{}" does not have any voxel with value > 0.'
+    
+        if args.npv:
+            # toDo. This will not really produce n seeds per voxel, only true
+            #  in average.
+            nbr_seeds = len(seed_generator.seeds_vox) * args.npv
+        elif args.nt:
+            nbr_seeds = args.nt
+        else:
+            # Setting npv = 1.
+            nbr_seeds = len(seed_generator.seeds_vox)
+
+        if len(seed_generator.seeds_vox) == 0:
+            parser.error('Seed mask "{}" does not have any voxel with value > 0.'
                      .format(args.in_seed))
 
     logging.debug("Loading tracking mask.")

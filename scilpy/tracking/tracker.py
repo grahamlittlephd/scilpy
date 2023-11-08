@@ -329,14 +329,14 @@ class Tracker(object):
             # if self has directions use them
             seed_dir = None
             if hasattr(self.seed_generator, 'seed_dirs'):
-                seed, seed_dir = self.seed_generator.get_next_pos_and_norm(
+                seed, seed_dir = self.seed_generator.get_next_pos_and_direction(
                      random_generator, indices, first_seed_of_chunk + s)
             else:
                 seed = self.seed_generator.get_next_pos(
                     random_generator, indices, first_seed_of_chunk + s)
             
             # Forward and backward tracking
-            line = self._get_line_both_directions(seed, seed_dir=seed_dir)
+            line = self._get_line_both_directions(seed, seeding_dir=seed_dir)
 
             if line is not None:
                 streamline = np.array(line, dtype='float32')

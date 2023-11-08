@@ -450,7 +450,7 @@ class ODFPropagator(PropagatorOnSphere):
         # with a different threshold than usual (sf_threshold_init).
         # So the initial step's propagation will be in a cone theta around a
         # "more probable" peak.
-        if seeding_dir is not None:
+        if seeding_dir is None:
             sf = self._get_sf(seeding_pos)
             sf[sf < self.sf_threshold_init] = 0
 

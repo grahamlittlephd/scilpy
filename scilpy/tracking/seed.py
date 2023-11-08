@@ -220,8 +220,8 @@ class SeedGeneratorExplicit(object):
         self.voxres = None # TODO do I need this?
 
         # Everything scilpy.tracking is in 'corner', 'voxmm'
-        self.origin = 'corner'
-        self.space = 'voxmm'
+        self.origin = origin
+        self.space = space
 
         # self.seed are all explicit po.
         self.seeds = seed_list
