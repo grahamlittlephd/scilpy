@@ -215,9 +215,9 @@ def main():
             if args.use_seed_dirs:
                 pnt_num = len(trk_streamlines.streamlines[0])
                 if pnt_num > 1:
-                    for coord1, coord2 in trk_streamlines.streamlines:
-                        seeds.append(tuple(coord1))
-                        seed_directions.append(tuple(coord2 - coord1))
+                    for streamline in trk_streamlines.streamlines:
+                        seeds.append(tuple(streamline[0]))
+                        seed_directions.append(tuple(streamline[1] - streamline[0]))
                     seeds = tuple(seeds)
                     seed_directions = tuple(seed_directions)
                     seed_generator = SeedGeneratorExplicit(seeds,
@@ -227,8 +227,8 @@ def main():
                 else:
                     raise ValueError('Streamlines must contain at least two points to use_seed_dirs')
             else:
-                for coord1 in trk_streamlines.streamlines:
-                    seeds.append(tuple(coord1))
+                for streamline in trk_streamlines.streamlines:
+                    seeds.append(tuple(streamline[0]))
                 seeds = tuple(seeds)
                 seed_generator = SeedGeneratorExplicit(seeds,
                                                    space=our_space,
