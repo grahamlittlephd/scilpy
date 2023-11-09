@@ -197,6 +197,8 @@ def main():
     our_origin = Origin('center')
 
     # Preparing everything
+    
+    # If using explicit seeds, load the trk and set up seed generator
     if args.in_seed_explicit:
         if args.in_seed_explicit.endswith('.trk'):
             logging.debug("Loading explicitly identified seeds.")
@@ -227,7 +229,8 @@ def main():
             else:
                 for coord1 in trk_streamlines.streamlines:
                     seeds.append(tuple(coord1))
-                    seed_generator = SeedGeneratorExplicit(seeds,
+                seeds = tuple(seeds)
+                seed_generator = SeedGeneratorExplicit(seeds,
                                                    space=our_space,
                                                    origin=our_origin)
             nbr_seeds = len(seeds)
