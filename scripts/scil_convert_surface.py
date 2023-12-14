@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-Script to convert a surface (FreeSurfer or VTK supported).
-    ".vtk", ".vtp", ".ply", ".stl", ".xml", ".obj"
+Script to convert the format of a surface mesh.
 
-> scil_convert_surface.py surf.vtk converted_surf.ply
+Supported formats are ".vtk", ".vtp", ".ply", ".stl", ".xml", ".obj"
+and Freesurfer surface (e.g. lh.white).
 """
 
 import argparse
@@ -28,10 +28,10 @@ def _build_arg_parser():
                                 formatter_class=argparse.RawTextHelpFormatter)
 
     p.add_argument('in_surface',
-                   help='Input a surface (FreeSurfer or supported by VTK).')
+                   help='Input surface')
 
     p.add_argument('out_surface',
-                   help='Output flipped surface (formats supported by VTK).')
+                   help='Output surface')
 
     add_overwrite_arg(p)
     return p
