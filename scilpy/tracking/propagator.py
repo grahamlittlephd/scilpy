@@ -318,7 +318,8 @@ class ODFPropagator(PropagatorOnSphere):
     Propagator on ODFs/fODFs. Algo can be det or prob.
     """
     def __init__(self, datavolume, step_size,
-                 rk_order, algo, basis, sf_threshold, sf_threshold_init,
+                 rk_order, algo, basis, sf_threshold, sf_threshold_max,
+                 sf_threshold_init,
                  theta, dipy_sphere='symmetric724',
                  min_separation_angle=np.pi / 16.,
                  space=Space('vox'), origin=Origin('center')):
@@ -393,6 +394,7 @@ class ODFPropagator(PropagatorOnSphere):
         # ODF params
         self.sf_threshold = sf_threshold
         self.sf_threshold_init = sf_threshold_init
+        self.sf_threshold_max = sf_threshold_max
         sh_order, full_basis =\
             get_sh_order_and_fullness(self.datavolume.data.shape[-1])
         self.basis = basis
@@ -536,6 +538,7 @@ class ODFPropagator(PropagatorOnSphere):
         """
         sf = self._get_sf(pos)
         sf[sf < self.sf_threshold] = 0
+        sf[sf > self.sf_threshold_max] = 0
         inds = np.nonzero(
             self.tracking_neighbours[v_in.index])[0]
         return sf[inds], self.dirs[inds]
@@ -561,6 +564,7 @@ class ODFPropagator(PropagatorOnSphere):
         """
         sf = self._get_sf(pos)
         sf[sf < self.sf_threshold] = 0
+        sf[sf > self.sf_threshold_max] = 0
         maxima = []
         for i in np.nonzero(self.tracking_neighbours[
                                 previous_direction.index])[0]:

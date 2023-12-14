@@ -87,6 +87,10 @@ def _build_arg_parser():
                          default=0.5, dest='sf_threshold_init',
                          help="Spherical function relative threshold value "
                               "for the \ninitial direction. [%(default)s]")
+    track_g.add_argument('--sfthres_max', metavar='sf_th', type=float,
+                         default=1.0, dest='sf_threshold_max',
+                         help="Spherical function maximum relative threshold value "
+                              "for the \nmask. [%(default)s]")
     track_g.add_argument('--rk_order', metavar="K", type=int, default=1,
                          choices=[1, 2, 4],
                          help="The order of the Runge-Kutta integration used "
@@ -240,7 +244,7 @@ def main():
     # in dipy.
     propagator = ODFPropagator(
         dataset, vox_step_size, args.rk_order, args.algo, args.sh_basis,
-        args.sf_threshold, args.sf_threshold_init, theta, args.sphere,
+        args.sf_threshold, args.sf_threshold_max, args.sf_threshold_init, theta, args.sphere,
         space=our_space, origin=our_origin)
 
     logging.debug("Instantiating tracker.")
