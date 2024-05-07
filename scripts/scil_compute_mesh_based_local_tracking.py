@@ -59,7 +59,7 @@ from scilpy.io.utils import (add_processes_arg, add_sphere_arg,
                              add_verbose_arg,
                              assert_inputs_exist, assert_outputs_exist,
                              verify_compression_th)
-from scilpy.image.datasets import DataVolume
+from scilpy.image.volume_space_management import DataVolume
 from scilpy.tracking.propagator import ODFPropagatorMesh
 from scilpy.tracking.seed import SeedGeneratorExplicit
 from scilpy.tracking.tools import get_theta
@@ -212,10 +212,10 @@ def main():
         trk_streamlines.to_corner()
         print(trk_streamlines._space)
         print(trk_streamlines._origin)
-        
+
         seeds = []
         normals = []
-        
+
         ## TODO check that streamlines always have 2 points
         for coord1, coord2 in trk_streamlines.streamlines:
             seeds.append(tuple(coord1))
@@ -264,7 +264,7 @@ def main():
     if args.set_mesh is not None:
         print('Placeholder SET not implemented yet')
 
-    
+
 
     logging.debug("Instantiating tracker.")
     rng_seed = args.rng_seed
@@ -274,7 +274,7 @@ def main():
         logging.debug("Instantiating propagator.")
         from scilpy.tracking.propagator import ODFPropagatorMesh
         propagator = ODFPropagatorMesh(dataset, args.step_size, args.rk_order, args.algo, args.sh_basis,
-                        args.sf_threshold, args.sf_threshold_init, theta, args.sphere, 
+                        args.sf_threshold, args.sf_threshold_init, theta, args.sphere,
                         nbr_init_norm_steps=args.nbr_init_norm_steps,
                         repulsion_force=repulsion_force_map,
                         repulsion_weight=args.repulsion_force_weight)
@@ -289,7 +289,7 @@ def main():
                       skip=args.skip)
 
         start = time.time()
-        
+
         logging.debug("Tracking seed round {}...".format(i+1))
         this_streamlines, this_seeds = tracker.track()
         streamlines = streamlines + this_streamlines
