@@ -307,7 +307,7 @@ class Tracker(object):
         first_seed_of_chunk = chunk_id * chunk_size + self.skip
         random_generator, indices = self.seed_generator.init_generator(
             self.rng_seed, first_seed_of_chunk)
-        
+
         if chunk_id == self.nbr_processes - 1:
             chunk_size += self.nbr_seeds % self.nbr_processes
 
@@ -337,11 +337,23 @@ class Tracker(object):
             else:
                 seed = self.seed_generator.get_next_pos(
                     random_generator, indices, first_seed_of_chunk + s)
-            
-            
+
+
+
+            # Setting the random value.
+            # Previous usage (and usage in Dipy) is to set the random seed
+            # based on the (real) seed position. However, in the case where we
+            # like to have exactly the same seed more than once, this will lead
+            # to exactly the same line, even in probabilistic tracking.
+            # Changing to seed position + seed number.
+            # Then in the case of multiprocessing, adding also a fraction based
+            # on current process ID.
+            eps = s + chunk_id / (self.nbr_processes + 1)
+            line_generator = np.random.default_rng(
+                np.uint32(hash((seed + (eps, eps, eps), self.rng_seed))))
 
             # Forward and backward tracking
-            line = self._get_line_both_directions(seed, normal=norm)
+            line = self._get_line_both_directions(seed, line_generator, normal=norm)
 
             if line is not None:
                 streamline = np.array(line, dtype='float32')
@@ -371,7 +383,7 @@ class Tracker(object):
                 p.close()
         return streamlines, seeds
 
-    def _get_line_both_directions(self, seeding_pos, normal=None):
+    def _get_line_both_directions(self, seeding_pos, line_generator, normal=None):
         """
         Generate a streamline from an initial position following the tracking
         parameters.
@@ -393,6 +405,7 @@ class Tracker(object):
         #  recreate a new one. This method is here for legacy reasons.
         np.random.seed(np.uint32(hash((seeding_pos, self.rng_seed))))
 
+        # Forward
         line = [np.asarray(seeding_pos)]
         if not normal:
             # Forward
@@ -407,9 +420,9 @@ class Tracker(object):
                 if len(line) > 1:
                     line.reverse()
 
-                tracking_info = self.propagator.prepare_backward(line,
-                                                                tracking_info)                                       
-                line = self._propagate_line(line, tracking_info)
+            tracking_info = self.propagator.prepare_backward(line,
+                                                            tracking_info)
+            line = self._propagate_line(line, tracking_info)
         else:
             # direction is given for initial tracking direction from seed
             tracking_info = self.propagator.prepare_normal(normal)
@@ -418,7 +431,7 @@ class Tracker(object):
         # Clean streamline
         if self.min_nbr_pts <= len(line) <= self.max_nbr_pts:
             return line
-        
+
         return None
 
     def _propagate_line(self, line, tracking_info):

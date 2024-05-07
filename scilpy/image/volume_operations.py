@@ -18,7 +18,7 @@ from scipy.ndimage import binary_dilation
 
 from scilpy.image.reslice import reslice  # Don't use Dipy's reslice. Buggy.
 from scilpy.io.image import get_data_as_mask
-from scilpy.utils.bvec_bval_tools import identify_shells
+from scilpy.gradients.bvec_bval_tools import identify_shells
 from scilpy.utils.util import voxel_to_world, world_to_voxel
 
 
@@ -279,8 +279,8 @@ def compute_snr(dwi, bval, bvec, b0_thr, mask,
     mask = get_data_as_mask(mask, dtype=bool)
 
     if split_shells:
-        centroids, shell_indices = identify_shells(bval, threshold=40.0,
-                                                   roundCentroids=False,
+        centroids, shell_indices = identify_shells(bval, tol=40.0,
+                                                   round_centroids=False,
                                                    sort=False)
         bval = centroids[shell_indices]
 
