@@ -272,7 +272,8 @@ class SeedGeneratorExplicit(object):
 
     Generated seeds from a list of positions. In voxel space (e.g origin = corner).
     """
-    def __init__(self, seed_list, norm_list=None):
+    def __init__(self, seed_list, norm_list=None,
+                 space=Space('voxmm'), origin=Origin('corner')):
         """
         Parameters
         ----------
@@ -284,16 +285,15 @@ class SeedGeneratorExplicit(object):
         self.data = None # TODO do I need this?
         self.voxres = None # TODO do I need this?
 
-        # Everything scilpy.tracking is in 'corner', 'voxmm'
-        self.origin = 'corner'
-        self.space = 'voxmm'
-
+        self.space = space
+        self.origin = origin
+        
         # self.seed are all explicit po.
         self.seeds = seed_list
         if len(self.seeds) == 0:
             logging.warning("No seeds provided!")
 
-        self.norms = norm_list        
+        self.norms = norm_list
         if norm_list is not None:
             if len(self.norms) != len(self.seeds):
                 logging.warning("Seed and normals must be of the same length!")

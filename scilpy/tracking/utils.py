@@ -407,4 +407,5 @@ def sample_distribution(dist, random_generator: np.random.Generator):
     if cdf[-1] == 0:
         return None
 
-    return cdf.searchsorted(random_generator.random() * cdf[-1])
+    rng = np.random.default_rng()
+    return cdf.searchsorted(rng.random() * cdf[-1])

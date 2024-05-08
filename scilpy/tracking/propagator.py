@@ -582,7 +582,8 @@ class ODFPropagatorMesh(ODFPropagator):
                  min_separation_angle=np.pi / 16.,
                  nbr_init_norm_steps=1,
                  repulsion_force=None,
-                 repulsion_weight=1.0):
+                 repulsion_weight=1.0,
+                 space=Space('voxmm'), origin=Origin('corner')):
         """
         Parameters
         ----------
@@ -627,7 +628,7 @@ class ODFPropagatorMesh(ODFPropagator):
 
         # Initializing using ODFPropagator
         super().__init__(dataset, step_size, rk_order, algo, basis, sf_threshold, sf_threshold_init,
-                         theta, dipy_sphere, min_separation_angle)
+                         theta, dipy_sphere, min_separation_angle, space, origin)
 
         self.nbr_init_norm_steps = nbr_init_norm_steps
 
@@ -677,7 +678,7 @@ class ODFPropagatorMesh(ODFPropagator):
         """
         # Finding last coordinate
         pos = line[-1]
-     
+
         # If seeded with normal direction take specified steps in normal direction before tracking
         if len(line) <= self.nbr_init_norm_steps+1:
             is_direction_valid = True
@@ -738,12 +739,12 @@ class ODFPropagatorMesh(ODFPropagator):
         Return
         ------
         repulsion: ndarray (3,)
-            Repulsion force at position pos weighted by 
+            Repulsion force at position pos weighted by
         """
 
         # Get repulsion force at position pos
         repulsion_from_map = self.repulsion_force.voxmm_to_value(pos[0], pos[1], pos[2], 'corner')
-        
+
         if np.linalg.norm(repulsion_from_map) == 0:
             return np.zeros((3,))
         else:
@@ -763,4 +764,3 @@ def smf(x, a, b):
         return 2*((x - a) / (b - a))**2
     else:
         return 1 - 2*((b - x) / (b - a))**2
-    
