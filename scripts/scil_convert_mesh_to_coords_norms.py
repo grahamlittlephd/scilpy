@@ -15,7 +15,7 @@ from copy import deepcopy
 from scilpy.io.utils import (add_overwrite_arg,
                              assert_inputs_exist,
                              assert_outputs_exist)
-from scilpy.image.datasets import DataVolume
+from scilpy.image.volume_space_management import DataVolume
 
 import open3d as o3d
 import nibabel as nib
@@ -65,19 +65,19 @@ def _build_arg_parser():
 
     p.add_argument('--ras', action='store_true',
                        help='Set to true if input mesh is in RAS')
-    
+
     p.add_argument('--las', action='store_true',
                        help='Set to true if input mesh is in LAS')
-    
+
     p.add_argument('--flip_normals', action='store_true',
                        help='If given normals will be flipped in the inward direction')
-    
+
     p.add_argument('--flip_normals_xy', action='store_true',
                        help='If given normals will be flipped in the inward direction')
 
     p.add_argument('--within_mask', default=None,
                     help='If given, only output the vertices/normals within the mask')
-    
+
     p.add_argument('--output_indices', default=None,
                     help='If given, output the indices of the vertices within the mask')
 
@@ -96,10 +96,10 @@ def main():
 
     if args.apply_transform is not None:
         assert_inputs_exist(parser, args.apply_transform)
-    
+
     mesh = o3d.io.read_triangle_mesh(args.in_surface)
     mesh.compute_vertex_normals()
-    
+
     coords = asarray(mesh.vertices)
     norms = asarray(mesh.vertex_normals)
 
@@ -124,8 +124,8 @@ def main():
         affine = nib.load(args.apply_transform).get_affine()
         diagnol_ones = [affine[0,0]/abs(affine[0,0]), affine[1,1]/abs(affine[1,1]), affine[2,2]/abs(affine[2,2])]
         norms = norms * diagnol_ones
-        
-        # TODO: Test this on multiple input for some reason doesn't work 
+
+        # TODO: Test this on multiple input for some reason doesn't work
         # on raw HCP input meshes. something to do with the transform
         #mesh.compute_vertex_normals()
         #norms = asarray(mesh.vertex_normals)
@@ -136,12 +136,12 @@ def main():
     if args.flip_normals_xy:
         norms[:,0] = -1 * norms[:,0]
         norms[:,1] = -1 * norms[:,1]
-    
+
     if args.within_mask is not None:
         new_coords = []
         new_norms = []
         indices = []
-        
+
         #Select coords and norms within mask
         mask_img = nib.load(args.within_mask)
         mask_data = mask_img.get_fdata()
@@ -153,7 +153,7 @@ def main():
                 new_coords.append(coord)
                 new_norms.append(norms[i])
                 indices.append(i)
-    
+
         coords = np.array(new_coords)
         norms = np.array(new_norms)
 
@@ -168,7 +168,7 @@ def main():
         mesh.vertices = o3d.utility.Vector3dVector(coords)
         o3d.io.write_triangle_mesh(args.output_mesh, lps_mesh)
 
-    # Write seeds into a trk file for visualization 
+    # Write seeds into a trk file for visualization
     if args.output_trk:
         assert(args.apply_transform is not None)
         seeds=[]
@@ -176,12 +176,12 @@ def main():
             seeds.append([coord, coord + norms[i]*2])
         seeds = np.array(seeds)
 
-        sft = StatefulTractogram(seeds, nib.load(args.apply_transform), 
+        sft = StatefulTractogram(seeds, nib.load(args.apply_transform),
                                  Space.VOXMM,
                                  Origin.NIFTI)
 
         save_tractogram(sft, args.output_trk)
 
-    
+
 if __name__ == "__main__":
     main()
