@@ -24,21 +24,16 @@ from copy import deepcopy
 
 from dipy.io.stateful_tractogram import set_sft_logger_level
 from dipy.io.streamline import save_tractogram
-import nibabel as nib
 import numpy as np
-from scipy import ndimage
 
-from scilpy.io.image import get_data_as_label, get_data_as_mask
 from scilpy.io.streamlines import load_tractogram_with_reference
 from scilpy.io.utils import (add_json_args,
                              add_overwrite_arg,
                              add_reference_arg,
                              add_verbose_arg,
                              assert_inputs_exist,
-                             assert_outputs_exist,
-                             read_info_from_mb_bdo)
-from scilpy.segment.streamlines import (filter_cuboid, filter_ellipsoid,
-                                        filter_grid_roi)
+                             assert_outputs_exist)
+
 from dipy.io.stateful_tractogram import StatefulTractogram
 
 import open3d as o3d
@@ -281,16 +276,16 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, only_star
         # Determine if there is an interection at either end of the streamline
 
         # Step size
-        step_size = np.linalg.norm(sft.streamlines[i][0] - sft.streamlines[i][1])  
+        step_size = np.linalg.norm(sft.streamlines[i][0] - sft.streamlines[i][1])
         nbr_of_steps = np.int(np.ceil(intersect_dist / step_size))
-        
+
         if len(sft.streamlines[i]) > nbr_of_steps*2:
             first_pnts = sft.streamlines[i][0:nbr_of_steps]
             last_pnts = sft.streamlines[i][-nbr_of_steps:]
             query_points = np.concatenate((first_pnts, last_pnts))
         else:
             query_points = sft.streamlines[i]
-        
+
         # Cast rays and get distance (negative values if inside)
         signed_distance = np.sign(np.array(scene.compute_signed_distance(query_points)))
 
@@ -300,7 +295,7 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, only_star
         # Set middle index False incase intersection detected because firstpnt and lastpnt concatenation (above)
         if len(sft.streamlines[i]) > nbr_of_steps*2:
             intersection[nbr_of_steps-1] = False
-        
+
         # check intersection points to see if angle is within range
         intersect_ind = np.where(intersection)[0]
         intersect_start = query_points[intersect_ind]
@@ -340,10 +335,10 @@ def streamlines_intersect_with_mesh(sft, target_mesh, both_ends=False, only_star
             thisRay = o3d.core.concatenate((thisRay_pos,thisRay_neg),0)
             ans = scene.cast_rays(thisRay)
             mesh_normal = np.squeeze(ans['primitive_normals'].numpy()[np.where(ans['t_hit'].numpy() == np.min(ans['t_hit'].numpy()))[0][0]])
-            
+
             # Get angle between vector and normal (dot product) vectors should already be normalized
             angles.append(np.abs(np.dot(vector, mesh_normal)))
-            
+
         angles = np.array(angles)
         if both_ends:
             start_angles = angles[intersect_ind < nbr_of_steps]
@@ -526,8 +521,8 @@ def main():
 
             mesh = o3d.io.read_triangle_mesh(filter_arg)
             filtered_sft, kept_ids = filter_mesh_intersect(sft, mesh,
-                                                           filter_mode, is_exclude, 
-                                                           args.intersect_min_angle, 
+                                                           filter_mode, is_exclude,
+                                                           args.intersect_min_angle,
                                                            args.intersect_max_angle,
                                                            args.intersect_dist)
 
