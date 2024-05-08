@@ -35,13 +35,13 @@ EPILOG = """
 
 # From trimeshpy mesh transformations
 def vtk_to_vox(vts, nibabel_img):
-    inv_affine = np.linalg.inv(nibabel_img.get_affine())
+    inv_affine = np.linalg.inv(nibabel_img.affine)
     flip = np.diag([-1, -1, 1, 1])
     vts = apply_affine(np.dot(inv_affine, flip), vts)
     return vts
 
 def vtk_to_voxmm(vts, nibabel_img):
-    scale = np.array(nibabel_img.get_header().get_zooms())
+    scale = np.array(nibabel_img.header.get_zooms())
     return vtk_to_vox(vts, nibabel_img) * scale
 
 def _build_arg_parser():
@@ -121,14 +121,9 @@ def main():
 
         # Recalculate normals after transformation
         mesh.vertices = o3d.utility.Vector3dVector(coords)
-        affine = nib.load(args.apply_transform).get_affine()
+        affine = nib.load(args.apply_transform).affine
         diagnol_ones = [affine[0,0]/abs(affine[0,0]), affine[1,1]/abs(affine[1,1]), affine[2,2]/abs(affine[2,2])]
         norms = norms * diagnol_ones
-
-        # TODO: Test this on multiple input for some reason doesn't work
-        # on raw HCP input meshes. something to do with the transform
-        #mesh.compute_vertex_normals()
-        #norms = asarray(mesh.vertex_normals)
 
     if args.flip_normals:
         norms = -1 * norms
@@ -149,7 +144,7 @@ def main():
         mask = DataVolume(mask_data, mask_res,'nearest')
 
         for i, coord in enumerate(asarray(coords)):
-            if mask.voxmm_to_value(coord[0], coord[1], coord[2], 'corner') > 0:
+            if mask._voxmm_to_value(coord[0], coord[1], coord[2], Origin('corner')) > 0:
                 new_coords.append(coord)
                 new_norms.append(norms[i])
                 indices.append(i)
